@@ -10,6 +10,7 @@ const SYMBOLS: Record<Currency, string> = {
   AUD: "A$",
   JPY: "¥",
   INR: "₹",
+  AED: "AED ",
 };
 
 interface AmountTextProps {
