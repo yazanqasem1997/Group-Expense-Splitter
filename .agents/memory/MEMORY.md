@@ -1,0 +1,2 @@
+- [React Compiler for-of crash](react-compiler-forof.md) — avoid `for (const [k,v] of Object.entries(...))` inside hooks/components; use `Object.keys().forEach()` instead.
+- [Theme toggle pattern](theme-toggle.md) — useColorScheme() alone can't be overridden in-app; requires ThemeContext with AsyncStorage persistence wrapping the whole tree.

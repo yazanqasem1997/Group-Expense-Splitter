@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { useApp } from "@/context/AppContext";
@@ -44,7 +44,7 @@ function SettingRow({
 }
 
 export default function AccountScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, toggleDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { currentUser, expenses, groups, settlements } = useApp();
 
@@ -90,7 +90,21 @@ export default function AccountScreen() {
       <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Preferences</Text>
       <View style={styles.section}>
         <SettingRow icon="bell" label="Notifications" value="On" />
-        <SettingRow icon="moon" label="Dark Mode" value={isDark ? "On" : "Off"} />
+        <Pressable
+          style={[styles.row, { backgroundColor: colors.surface }]}
+          onPress={toggleDark}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: colors.primaryLight }]}>
+            <Feather name="moon" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>Dark Mode</Text>
+          <Switch
+            value={isDark}
+            onValueChange={toggleDark}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </Pressable>
         <SettingRow icon="dollar-sign" label="Default Currency" value="USD" />
       </View>
 
