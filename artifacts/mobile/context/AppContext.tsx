@@ -94,6 +94,8 @@ interface AppContextType {
   groups: Group[];
   expenses: Expense[];
   settlements: Settlement[];
+  simplifyDebtsEnabled: boolean;
+  toggleSimplifyDebts: () => void;
   addMember: (member: Omit<Member, "id">) => Member;
   addGroup: (group: Omit<Group, "id" | "createdAt">) => Group;
   updateGroup: (id: string, updates: Partial<Group>) => void;
@@ -222,6 +224,41 @@ const defaultExpenses: Expense[] = [
   },
 ];
 
+function rawPairwiseDebts(groupExpenses: Expense[], groupSettlements: Settlement[], memberIds: string[]): DebtRelation[] {
+  const pairBalance: Record<string, Record<string, number>> = {};
+
+  groupExpenses.forEach(expense => {
+    const payer = expense.paidById;
+    if (!memberIds.includes(payer)) return;
+    expense.splits.forEach(split => {
+      if (split.memberId === payer) return;
+      if (!memberIds.includes(split.memberId)) return;
+      if (!pairBalance[payer]) pairBalance[payer] = {};
+      pairBalance[payer][split.memberId] = (pairBalance[payer][split.memberId] ?? 0) + split.amount;
+    });
+  });
+
+  groupSettlements.forEach(s => {
+    if (!memberIds.includes(s.fromId) || !memberIds.includes(s.toId)) return;
+    if (pairBalance[s.toId] && pairBalance[s.toId][s.fromId] !== undefined) {
+      pairBalance[s.toId][s.fromId] -= s.amount;
+    }
+  });
+
+  const result: DebtRelation[] = [];
+  Object.keys(pairBalance).forEach(creditor => {
+    Object.keys(pairBalance[creditor]).forEach(debtor => {
+      const amount = pairBalance[creditor][debtor];
+      if (amount > 0.005) {
+        result.push({ fromId: debtor, toId: creditor, amount: Math.round(amount * 100) / 100 });
+      } else if (amount < -0.005) {
+        result.push({ fromId: creditor, toId: debtor, amount: Math.round(-amount * 100) / 100 });
+      }
+    });
+  });
+  return result;
+}
+
 function simplifyDebts(netBalances: Record<string, number>): DebtRelation[] {
   const ids = Object.keys(netBalances);
   const creditors: { id: string; amount: number }[] = [];
@@ -264,6 +301,8 @@ function simplifyDebts(netBalances: Record<string, number>): DebtRelation[] {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const SIMPLIFY_KEY = "@spliteasy_simplify";
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentUser] = useState<Member>(defaultCurrentUser);
   const [members, setMembers] = useState<Member[]>(defaultMembers);
@@ -271,6 +310,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>(defaultExpenses);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -286,11 +326,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (data.expenses) setExpenses(data.expenses);
         if (data.settlements) setSettlements(data.settlements);
       }
+      const simplifyStored = await AsyncStorage.getItem(SIMPLIFY_KEY);
+      if (simplifyStored !== null) setSimplifyDebtsEnabled(simplifyStored === "true");
     } catch (e) {
     } finally {
       setIsLoading(false);
     }
   };
+
+  const toggleSimplifyDebts = useCallback(() => {
+    setSimplifyDebtsEnabled(prev => {
+      const next = !prev;
+      AsyncStorage.setItem(SIMPLIFY_KEY, String(next));
+      return next;
+    });
+  }, []);
 
   const saveData = useCallback(
     async (
@@ -424,33 +474,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const groupExpenses = expenses.filter(e => e.groupId === groupId);
       const groupSettlements = settlements.filter(s => s.groupId === groupId);
 
-      const netBalances: Record<string, number> = {};
-      for (const id of group.memberIds) {
-        netBalances[id] = 0;
+      if (!simplifyDebtsEnabled) {
+        return rawPairwiseDebts(groupExpenses, groupSettlements, group.memberIds);
       }
 
-      for (const expense of groupExpenses) {
-        const payer = expense.paidById;
-        if (!(payer in netBalances)) continue;
+      const netBalances: Record<string, number> = {};
+      group.memberIds.forEach(id => { netBalances[id] = 0; });
 
-        for (const split of expense.splits) {
-          if (!(split.memberId in netBalances)) continue;
+      groupExpenses.forEach(expense => {
+        const payer = expense.paidById;
+        if (!(payer in netBalances)) return;
+        expense.splits.forEach(split => {
+          if (!(split.memberId in netBalances)) return;
           if (split.memberId !== payer) {
             netBalances[payer] = (netBalances[payer] || 0) + split.amount;
             netBalances[split.memberId] = (netBalances[split.memberId] || 0) - split.amount;
           }
-        }
-      }
+        });
+      });
 
-      for (const settlement of groupSettlements) {
-        if (!(settlement.fromId in netBalances) || !(settlement.toId in netBalances)) continue;
+      groupSettlements.forEach(settlement => {
+        if (!(settlement.fromId in netBalances) || !(settlement.toId in netBalances)) return;
         netBalances[settlement.fromId] = (netBalances[settlement.fromId] || 0) + settlement.amount;
         netBalances[settlement.toId] = (netBalances[settlement.toId] || 0) - settlement.amount;
-      }
+      });
 
       return simplifyDebts(netBalances);
     },
-    [groups, expenses, settlements]
+    [groups, expenses, settlements, simplifyDebtsEnabled]
   );
 
   const getTotalOwed = useCallback(() => {
@@ -502,6 +553,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         groups,
         expenses,
         settlements,
+        simplifyDebtsEnabled,
+        toggleSimplifyDebts,
         addMember,
         addGroup,
         updateGroup,
