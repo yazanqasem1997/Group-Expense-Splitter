@@ -1,60 +1,77 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AmountText, formatAmount } from "@/components/AmountText";
+import { formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { Member, useApp } from "@/context/AppContext";
 import { CURRENT_USER_ID_EXPORT } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function FriendsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { members, currentUser, getGroupBalances, groups, getMemberById, addMember } = useApp();
+  const { members, currentUser, getGroupBalances, groups, addMember } = useApp();
 
   const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newEmail, setNewEmail] = useState("");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [emailError, setEmailError] = useState("");
 
   const friends = members.filter(m => !m.isCurrentUser);
 
   const friendBalances = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const group of groups) {
+    groups.forEach(group => {
       const debts = getGroupBalances(group.id);
-      for (const debt of debts) {
+      debts.forEach(debt => {
         if (debt.fromId === currentUser.id) {
           map[debt.toId] = (map[debt.toId] ?? 0) - debt.amount;
         } else if (debt.toId === currentUser.id) {
           map[debt.fromId] = (map[debt.fromId] ?? 0) + debt.amount;
         }
-      }
-    }
+      });
+    });
     return map;
   }, [groups, getGroupBalances, currentUser]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   function handleAddFriend() {
-    if (!newName.trim()) return;
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setEmailError("Email is required");
+      return;
+    }
+    if (!EMAIL_RE.test(trimmedEmail)) {
+      setEmailError("Enter a valid email address");
+      return;
+    }
+    const alreadyExists = members.some(m => m.email?.toLowerCase() === trimmedEmail.toLowerCase());
+    if (alreadyExists) {
+      setEmailError("This email is already in your friends list");
+      return;
+    }
+    const derivedName = name.trim() || trimmedEmail.split("@")[0];
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addMember({ name: newName.trim(), email: newEmail.trim() || undefined, avatarColor: "" });
-    setNewName("");
-    setNewEmail("");
+    addMember({ name: derivedName, email: trimmedEmail, avatarColor: "", isPending: true });
+    setEmail("");
+    setName("");
+    setEmailError("");
     setShowAdd(false);
   }
 
@@ -64,9 +81,16 @@ export default function FriendsScreen() {
 
     return (
       <View style={[styles.friendCard, { backgroundColor: colors.surface }]}>
-        <Avatar name={member.name} color={member.avatarColor} size={44} />
+        <Avatar name={member.name} color={member.avatarColor} size={46} />
         <View style={styles.friendInfo}>
-          <Text style={[styles.friendName, { color: colors.text }]}>{member.name}</Text>
+          <View style={styles.friendNameRow}>
+            <Text style={[styles.friendName, { color: colors.text }]}>{member.name}</Text>
+            {member.isPending && (
+              <View style={[styles.pendingBadge, { backgroundColor: colors.accentTint }]}>
+                <Text style={[styles.pendingText, { color: colors.accent }]}>Invited</Text>
+              </View>
+            )}
+          </View>
           {member.email ? (
             <Text style={[styles.friendEmail, { color: colors.textSecondary }]}>
               {member.email}
@@ -75,23 +99,13 @@ export default function FriendsScreen() {
         </View>
         <View style={styles.friendBalance}>
           {isSettled ? (
-            <Text style={[styles.settledText, { color: colors.textTertiary }]}>Settled</Text>
+            <Text style={[styles.settledText, { color: colors.textTertiary }]}>Settled up</Text>
           ) : (
             <>
-              <Text
-                style={[
-                  styles.balanceLabel,
-                  { color: balance > 0 ? colors.positive : colors.negative },
-                ]}
-              >
+              <Text style={[styles.balanceLabel, { color: balance > 0 ? colors.positive : colors.negative }]}>
                 {balance > 0 ? "owes you" : "you owe"}
               </Text>
-              <Text
-                style={[
-                  styles.balanceAmount,
-                  { color: balance > 0 ? colors.positive : colors.negative },
-                ]}
-              >
+              <Text style={[styles.balanceAmount, { color: balance > 0 ? colors.positive : colors.negative }]}>
                 {formatAmount(Math.abs(balance))}
               </Text>
             </>
@@ -109,35 +123,64 @@ export default function FriendsScreen() {
           style={[styles.addBtn, { backgroundColor: colors.primary }]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setShowAdd(true);
+            setShowAdd(v => !v);
+            setEmailError("");
           }}
         >
-          <Feather name="user-plus" size={18} color="#fff" />
+          <Feather name={showAdd ? "x" : "user-plus"} size={18} color="#fff" />
         </Pressable>
       </View>
 
       {showAdd && (
-        <View style={[styles.addForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <TextInput
-            style={[styles.input, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}
-            placeholder="Name"
-            placeholderTextColor={colors.textTertiary}
-            value={newName}
-            onChangeText={setNewName}
-          />
-          <TextInput
-            style={[styles.input, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}
-            placeholder="Email (optional)"
-            placeholderTextColor={colors.textTertiary}
-            value={newEmail}
-            onChangeText={setNewEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+        <KeyboardAwareScrollViewCompat
+          style={[styles.addForm, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          contentContainerStyle={{ gap: 10 }}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={false}
+        >
+          <Text style={[styles.addFormTitle, { color: colors.text }]}>Invite a friend</Text>
+          <Text style={[styles.addFormSub, { color: colors.textSecondary }]}>
+            They'll appear in your friends list right away.
+          </Text>
+
+          <View>
+            <View style={[
+              styles.inputWrap,
+              { backgroundColor: colors.inputBg, borderColor: emailError ? colors.danger : colors.inputBorder },
+            ]}>
+              <Feather name="mail" size={16} color={emailError ? colors.danger : colors.textTertiary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="Email address *"
+                placeholderTextColor={colors.textTertiary}
+                value={email}
+                onChangeText={t => { setEmail(t); setEmailError(""); }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            {emailError ? (
+              <Text style={[styles.errorText, { color: colors.danger }]}>{emailError}</Text>
+            ) : null}
+          </View>
+
+          <View style={[styles.inputWrap, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+            <Feather name="user" size={16} color={colors.textTertiary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: colors.text }]}
+              placeholder="Name (optional — defaults to email)"
+              placeholderTextColor={colors.textTertiary}
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+            />
+          </View>
+
           <View style={styles.formButtons}>
             <Pressable
-              style={[styles.formBtn, { backgroundColor: colors.border }]}
-              onPress={() => setShowAdd(false)}
+              style={[styles.formBtn, styles.formBtnSecondary, { borderColor: colors.border }]}
+              onPress={() => { setShowAdd(false); setEmail(""); setName(""); setEmailError(""); }}
             >
               <Text style={[styles.formBtnText, { color: colors.textSecondary }]}>Cancel</Text>
             </Pressable>
@@ -145,10 +188,11 @@ export default function FriendsScreen() {
               style={[styles.formBtn, { backgroundColor: colors.primary }]}
               onPress={handleAddFriend}
             >
-              <Text style={[styles.formBtnText, { color: "#fff" }]}>Add</Text>
+              <Feather name="user-plus" size={15} color="#fff" />
+              <Text style={[styles.formBtnText, { color: "#fff" }]}>Send Invite</Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAwareScrollViewCompat>
       )}
 
       <FlatList
@@ -159,7 +203,7 @@ export default function FriendsScreen() {
           <EmptyState
             icon="users"
             title="No friends yet"
-            subtitle="Add friends to split expenses with them"
+            subtitle="Invite friends by email to start splitting expenses"
           />
         }
         renderItem={({ item }) => renderFriend(item)}
@@ -196,28 +240,37 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    maxHeight: 320,
   },
-  input: {
-    height: 44,
+  addFormTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  addFormSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginBottom: 4 },
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 46,
     borderRadius: 10,
+    borderWidth: 1,
     paddingHorizontal: 12,
+    gap: 8,
+  },
+  inputIcon: {},
+  input: {
+    flex: 1,
     fontSize: 15,
     fontFamily: "Inter_400Regular",
-    borderWidth: 1,
   },
-  formButtons: { flexDirection: "row", gap: 10 },
+  errorText: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4, marginLeft: 4 },
+  formButtons: { flexDirection: "row", gap: 10, marginTop: 4 },
   formBtn: {
     flex: 1,
-    height: 40,
+    height: 42,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
   },
+  formBtnSecondary: { borderWidth: 1, backgroundColor: "transparent" },
   formBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   listContent: { padding: 16, gap: 10 },
   friendCard: {
@@ -233,7 +286,14 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   friendInfo: { flex: 1 },
+  friendNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   friendName: { fontSize: 16, fontFamily: "Inter_500Medium" },
+  pendingBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  pendingText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   friendEmail: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   friendBalance: { alignItems: "flex-end" },
   settledText: { fontSize: 13, fontFamily: "Inter_500Medium" },

@@ -46,7 +46,7 @@ function SettingRow({
 export default function AccountScreen() {
   const { colors, isDark, toggleDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { currentUser, expenses, groups, settlements } = useApp();
+  const { currentUser, expenses, groups, settlements, simplifyDebtsEnabled, toggleSimplifyDebts } = useApp();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const myExpensesCount = expenses.filter(e => e.paidById === currentUser.id).length;
@@ -102,6 +102,26 @@ export default function AccountScreen() {
             value={isDark}
             onValueChange={toggleDark}
             trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </Pressable>
+        <Pressable
+          style={[styles.row, { backgroundColor: colors.surface }]}
+          onPress={toggleSimplifyDebts}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: colors.tealTint }]}>
+            <Feather name="git-merge" size={18} color={colors.teal} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.text, flex: 0 }]}>Simplify Debts</Text>
+            <Text style={[styles.rowSub, { color: colors.textSecondary }]}>
+              {simplifyDebtsEnabled ? "Fewer payments, merged across friends" : "Show each expense debt separately"}
+            </Text>
+          </View>
+          <Switch
+            value={simplifyDebtsEnabled}
+            onValueChange={toggleSimplifyDebts}
+            trackColor={{ false: colors.border, true: colors.teal }}
             thumbColor="#FFFFFF"
           />
         </Pressable>
@@ -203,6 +223,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rowLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
+  rowSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
   rowValue: { fontSize: 14, fontFamily: "Inter_400Regular" },
   version: { textAlign: "center", fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 8 },
 });
