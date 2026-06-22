@@ -1,7 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-export type Currency = "USD" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR";
+export type Currency = "USD" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR" | "AED";
+
+export const CURRENCY_SYMBOLS: Record<Currency, string> = {
+  USD: "$", EUR: "€", GBP: "£", CAD: "CA$", AUD: "A$",
+  JPY: "¥", INR: "₹", AED: "AED ",
+};
+
+export function formatAmount(amount: number, currency: Currency): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? currency + " ";
+  return `${symbol}${amount.toFixed(2)}`;
+}
 
 export interface Member {
   id: string;
@@ -9,6 +19,7 @@ export interface Member {
   email?: string;
   avatarColor: string;
   isCurrentUser?: boolean;
+  isPending?: boolean;
 }
 
 export interface SplitDetail {
@@ -103,8 +114,8 @@ interface AppContextType {
 const STORAGE_KEY = "spliteasy_data";
 
 const DEFAULT_AVATAR_COLORS = [
-  "#1A9E8F", "#3B82F6", "#8B5CF6", "#F59E0B",
-  "#EC4899", "#10B981", "#F97316", "#6366F1",
+  "#FF6B35", "#7C3AED", "#0EA5E9", "#F59E0B",
+  "#FF3366", "#00C896", "#EC4899", "#10B981",
 ];
 
 const CURRENT_USER_ID = "user_current";
@@ -112,14 +123,14 @@ const CURRENT_USER_ID = "user_current";
 const defaultCurrentUser: Member = {
   id: CURRENT_USER_ID,
   name: "You",
-  avatarColor: "#1A9E8F",
+  avatarColor: "#FF6B35",
   isCurrentUser: true,
 };
 
 const defaultMembers: Member[] = [
   defaultCurrentUser,
-  { id: "user_2", name: "Alex Chen", email: "alex@example.com", avatarColor: "#3B82F6" },
-  { id: "user_3", name: "Sam Rivera", email: "sam@example.com", avatarColor: "#8B5CF6" },
+  { id: "user_2", name: "Alex Chen", email: "alex@example.com", avatarColor: "#7C3AED" },
+  { id: "user_3", name: "Sam Rivera", email: "sam@example.com", avatarColor: "#0EA5E9" },
   { id: "user_4", name: "Jordan Lee", email: "jordan@example.com", avatarColor: "#F59E0B" },
 ];
 
@@ -211,6 +222,46 @@ const defaultExpenses: Expense[] = [
   },
 ];
 
+function simplifyDebts(netBalances: Record<string, number>): DebtRelation[] {
+  const ids = Object.keys(netBalances);
+  const creditors: { id: string; amount: number }[] = [];
+  const debtors: { id: string; amount: number }[] = [];
+
+  ids.forEach(id => {
+    const balance = netBalances[id];
+    if (balance > 0.005) creditors.push({ id, amount: balance });
+    else if (balance < -0.005) debtors.push({ id, amount: -balance });
+  });
+
+  creditors.sort((a, b) => b.amount - a.amount);
+  debtors.sort((a, b) => b.amount - a.amount);
+
+  const result: DebtRelation[] = [];
+  let ci = 0;
+  let di = 0;
+
+  while (ci < creditors.length && di < debtors.length) {
+    const credit = creditors[ci];
+    const debt = debtors[di];
+    const payment = Math.min(credit.amount, debt.amount);
+
+    if (payment > 0.005) {
+      result.push({
+        fromId: debt.id,
+        toId: credit.id,
+        amount: Math.round(payment * 100) / 100,
+      });
+    }
+
+    credit.amount -= payment;
+    debt.amount -= payment;
+    if (credit.amount < 0.005) ci++;
+    if (debt.amount < 0.005) di++;
+  }
+
+  return result;
+}
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -236,7 +287,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (data.settlements) setSettlements(data.settlements);
       }
     } catch (e) {
-      // Use defaults
     } finally {
       setIsLoading(false);
     }
@@ -273,7 +323,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const newMember: Member = {
         ...member,
         id: genId(),
-        avatarColor: DEFAULT_AVATAR_COLORS[idx % DEFAULT_AVATAR_COLORS.length],
+        avatarColor: member.avatarColor || DEFAULT_AVATAR_COLORS[idx % DEFAULT_AVATAR_COLORS.length],
       };
       const updated = [...members, newMember];
       setMembers(updated);
@@ -374,60 +424,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const groupExpenses = expenses.filter(e => e.groupId === groupId);
       const groupSettlements = settlements.filter(s => s.groupId === groupId);
 
-      const balances: Record<string, Record<string, number>> = {};
-
-      for (const memberId of group.memberIds) {
-        balances[memberId] = {};
-        for (const otherId of group.memberIds) {
-          if (memberId !== otherId) balances[memberId][otherId] = 0;
-        }
+      const netBalances: Record<string, number> = {};
+      for (const id of group.memberIds) {
+        netBalances[id] = 0;
       }
 
       for (const expense of groupExpenses) {
         const payer = expense.paidById;
+        if (!(payer in netBalances)) continue;
+
         for (const split of expense.splits) {
-          if (split.memberId !== payer && group.memberIds.includes(split.memberId)) {
-            balances[split.memberId][payer] =
-              (balances[split.memberId][payer] || 0) + split.amount;
+          if (!(split.memberId in netBalances)) continue;
+          if (split.memberId !== payer) {
+            netBalances[payer] = (netBalances[payer] || 0) + split.amount;
+            netBalances[split.memberId] = (netBalances[split.memberId] || 0) - split.amount;
           }
         }
       }
 
       for (const settlement of groupSettlements) {
-        if (
-          group.memberIds.includes(settlement.fromId) &&
-          group.memberIds.includes(settlement.toId)
-        ) {
-          balances[settlement.fromId][settlement.toId] = Math.max(
-            0,
-            (balances[settlement.fromId][settlement.toId] || 0) - settlement.amount
-          );
-        }
+        if (!(settlement.fromId in netBalances) || !(settlement.toId in netBalances)) continue;
+        netBalances[settlement.fromId] = (netBalances[settlement.fromId] || 0) + settlement.amount;
+        netBalances[settlement.toId] = (netBalances[settlement.toId] || 0) - settlement.amount;
       }
 
-      const debts: DebtRelation[] = [];
-      const processed = new Set<string>();
-
-      for (const fromId of group.memberIds) {
-        for (const toId of group.memberIds) {
-          if (fromId === toId) continue;
-          const key = [fromId, toId].sort().join("_");
-          if (processed.has(key)) continue;
-          processed.add(key);
-
-          const aOwesB = balances[fromId]?.[toId] || 0;
-          const bOwesA = balances[toId]?.[fromId] || 0;
-          const net = aOwesB - bOwesA;
-
-          if (net > 0.009) {
-            debts.push({ fromId, toId, amount: Math.round(net * 100) / 100 });
-          } else if (net < -0.009) {
-            debts.push({ fromId: toId, toId: fromId, amount: Math.round(-net * 100) / 100 });
-          }
-        }
-      }
-
-      return debts;
+      return simplifyDebts(netBalances);
     },
     [groups, expenses, settlements]
   );

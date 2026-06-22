@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
-import { ExpenseCategory, SplitType, useApp } from "@/context/AppContext";
+import { CURRENCY_SYMBOLS, ExpenseCategory, SplitType, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 
 const CATEGORIES: { value: ExpenseCategory; label: string; icon: string }[] = [
@@ -51,6 +51,7 @@ export default function NewExpenseScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const amount = parseFloat(amountStr) || 0;
+  const currencySymbol = group ? (CURRENCY_SYMBOLS[group.currency] ?? group.currency + " ") : "$";
 
   const members = useMemo(
     () =>
@@ -63,7 +64,7 @@ export default function NewExpenseScreen() {
   const splits = useMemo(() => {
     if (!group) return [];
     if (splitType === "equal") {
-      const share = amount / members.length;
+      const share = members.length > 0 ? amount / members.length : 0;
       return members.map(m => ({
         memberId: m.id,
         amount: Math.round(share * 100) / 100,
@@ -77,7 +78,6 @@ export default function NewExpenseScreen() {
         paid: m.id === paidById ? amount : undefined,
       }));
     }
-    // percentage
     return members.map(m => {
       const pct = parseFloat(percentages[m.id] ?? "0") || 0;
       return {
@@ -89,6 +89,37 @@ export default function NewExpenseScreen() {
     });
   }, [splitType, amount, members, paidById, exactAmounts, percentages]);
 
+  const splitTotal = useMemo(() => splits.reduce((s, sp) => s + sp.amount, 0), [splits]);
+
+  const splitValid = useMemo(() => {
+    if (amount <= 0) return null;
+    if (splitType === "equal") return true;
+    if (splitType === "exact") return Math.abs(splitTotal - amount) < 0.01;
+    if (splitType === "percentage") {
+      const totalPct = members.reduce((s, m) => s + (parseFloat(percentages[m.id] ?? "0") || 0), 0);
+      return Math.abs(totalPct - 100) < 0.1;
+    }
+    return false;
+  }, [amount, splitType, splitTotal, members, percentages]);
+
+  function adjustExact(memberId: string, delta: number) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setExactAmounts(prev => {
+      const current = parseFloat(prev[memberId] ?? "0") || 0;
+      const next = Math.max(0, Math.round((current + delta) * 100) / 100);
+      return { ...prev, [memberId]: next.toFixed(2) };
+    });
+  }
+
+  function adjustPercentage(memberId: string, delta: number) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPercentages(prev => {
+      const current = parseFloat(prev[memberId] ?? "0") || 0;
+      const next = Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
+      return { ...prev, [memberId]: next.toString() };
+    });
+  }
+
   function handleSave() {
     if (!description.trim()) {
       Alert.alert("Description required", "Please enter a description");
@@ -99,6 +130,14 @@ export default function NewExpenseScreen() {
       return;
     }
     if (!group) return;
+    if (splitValid === false) {
+      const msg =
+        splitType === "exact"
+          ? `Amounts must add up to ${currencySymbol}${amount.toFixed(2)}`
+          : "Percentages must add up to 100%";
+      Alert.alert("Split doesn't balance", msg);
+      return;
+    }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addExpense({
@@ -141,7 +180,7 @@ export default function NewExpenseScreen() {
       >
         <View style={[styles.amountCard, { backgroundColor: colors.surface }]}>
           <Text style={[styles.currencySymbol, { color: colors.primary }]}>
-            {group.currency === "EUR" ? "€" : group.currency === "GBP" ? "£" : "$"}
+            {currencySymbol}
           </Text>
           <TextInput
             style={[styles.amountInput, { color: colors.text }]}
@@ -181,12 +220,7 @@ export default function NewExpenseScreen() {
                 size={14}
                 color={category === c.value ? "#fff" : colors.textSecondary}
               />
-              <Text
-                style={[
-                  styles.catLabel,
-                  { color: category === c.value ? "#fff" : colors.text },
-                ]}
-              >
+              <Text style={[styles.catLabel, { color: category === c.value ? "#fff" : colors.text }]}>
                 {c.label}
               </Text>
             </Pressable>
@@ -208,12 +242,7 @@ export default function NewExpenseScreen() {
               onPress={() => setPaidById(m.id)}
             >
               <Avatar name={m.name} color={m.id === paidById ? "#fff" : m.avatarColor} size={24} />
-              <Text
-                style={[
-                  styles.paidByLabel,
-                  { color: paidById === m.id ? "#fff" : colors.text },
-                ]}
-              >
+              <Text style={[styles.paidByLabel, { color: paidById === m.id ? "#fff" : colors.text }]}>
                 {m.isCurrentUser ? "You" : m.name.split(" ")[0]}
               </Text>
             </Pressable>
@@ -231,20 +260,10 @@ export default function NewExpenseScreen() {
               ]}
               onPress={() => setSplitType(t.value)}
             >
-              <Text
-                style={[
-                  styles.splitTypeLabel,
-                  { color: splitType === t.value ? "#fff" : colors.text },
-                ]}
-              >
+              <Text style={[styles.splitTypeLabel, { color: splitType === t.value ? "#fff" : colors.text }]}>
                 {t.label}
               </Text>
-              <Text
-                style={[
-                  styles.splitTypeDesc,
-                  { color: splitType === t.value ? "rgba(255,255,255,0.7)" : colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.splitTypeDesc, { color: splitType === t.value ? "rgba(255,255,255,0.7)" : colors.textSecondary }]}>
                 {t.desc}
               </Text>
             </Pressable>
@@ -262,35 +281,93 @@ export default function NewExpenseScreen() {
                 </Text>
                 {splitType === "equal" ? (
                   <Text style={[styles.splitAmount, { color: colors.textSecondary }]}>
-                    {group.currency === "EUR" ? "€" : "$"}
-                    {(split?.amount ?? 0).toFixed(2)}
+                    {currencySymbol}{(split?.amount ?? 0).toFixed(2)}
                   </Text>
                 ) : splitType === "exact" ? (
-                  <TextInput
-                    style={[styles.splitInput, { color: colors.text, borderColor: colors.border }]}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textTertiary}
-                    value={exactAmounts[m.id] ?? ""}
-                    onChangeText={v => setExactAmounts(prev => ({ ...prev, [m.id]: v }))}
-                    keyboardType="decimal-pad"
-                  />
-                ) : (
-                  <View style={styles.pctWrap}>
+                  <View style={styles.stepperWrap}>
+                    <Pressable
+                      style={[styles.stepperBtn, { backgroundColor: colors.primaryLight, borderColor: colors.border }]}
+                      onPress={() => adjustExact(m.id, -1)}
+                    >
+                      <Feather name="minus" size={14} color={colors.primary} />
+                    </Pressable>
                     <TextInput
-                      style={[styles.splitInput, { color: colors.text, borderColor: colors.border }]}
-                      placeholder="0"
+                      style={[styles.splitInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBg }]}
+                      placeholder="0.00"
                       placeholderTextColor={colors.textTertiary}
-                      value={percentages[m.id] ?? ""}
-                      onChangeText={v => setPercentages(prev => ({ ...prev, [m.id]: v }))}
+                      value={exactAmounts[m.id] ?? ""}
+                      onChangeText={v => setExactAmounts(prev => ({ ...prev, [m.id]: v }))}
                       keyboardType="decimal-pad"
                     />
-                    <Text style={[styles.pctLabel, { color: colors.textSecondary }]}>%</Text>
+                    <Pressable
+                      style={[styles.stepperBtn, { backgroundColor: colors.primaryLight, borderColor: colors.border }]}
+                      onPress={() => adjustExact(m.id, 1)}
+                    >
+                      <Feather name="plus" size={14} color={colors.primary} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={styles.stepperWrap}>
+                    <Pressable
+                      style={[styles.stepperBtn, { backgroundColor: colors.primaryLight, borderColor: colors.border }]}
+                      onPress={() => adjustPercentage(m.id, -5)}
+                    >
+                      <Feather name="minus" size={14} color={colors.primary} />
+                    </Pressable>
+                    <View style={styles.pctInputWrap}>
+                      <TextInput
+                        style={[styles.splitInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBg }]}
+                        placeholder="0"
+                        placeholderTextColor={colors.textTertiary}
+                        value={percentages[m.id] ?? ""}
+                        onChangeText={v => setPercentages(prev => ({ ...prev, [m.id]: v }))}
+                        keyboardType="decimal-pad"
+                      />
+                      <Text style={[styles.pctLabel, { color: colors.textSecondary }]}>%</Text>
+                    </View>
+                    <Pressable
+                      style={[styles.stepperBtn, { backgroundColor: colors.primaryLight, borderColor: colors.border }]}
+                      onPress={() => adjustPercentage(m.id, 5)}
+                    >
+                      <Feather name="plus" size={14} color={colors.primary} />
+                    </Pressable>
                   </View>
                 )}
               </View>
             );
           })}
         </View>
+
+        {splitType !== "equal" && amount > 0 && (
+          <View style={[
+            styles.validationRow,
+            {
+              backgroundColor: splitValid ? colors.successLight : colors.dangerLight,
+              borderColor: splitValid ? colors.success : colors.danger,
+            },
+          ]}>
+            <Feather
+              name={splitValid ? "check-circle" : "alert-circle"}
+              size={16}
+              color={splitValid ? colors.success : colors.danger}
+            />
+            <Text style={[styles.validationText, { color: splitValid ? colors.success : colors.danger }]}>
+              {splitType === "exact"
+                ? splitValid
+                  ? `Splits add up to ${currencySymbol}${amount.toFixed(2)} ✓`
+                  : `${currencySymbol}${splitTotal.toFixed(2)} of ${currencySymbol}${amount.toFixed(2)} assigned`
+                : (() => {
+                    const totalPct = members.reduce(
+                      (s, m) => s + (parseFloat(percentages[m.id] ?? "0") || 0),
+                      0
+                    );
+                    return splitValid
+                      ? `Percentages add up to 100% ✓`
+                      : `${totalPct.toFixed(1)}% of 100% assigned`;
+                  })()}
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -384,16 +461,34 @@ const styles = StyleSheet.create({
   },
   splitName: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
   splitAmount: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  stepperWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
+  stepperBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   splitInput: {
-    width: 80,
+    width: 70,
     height: 36,
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     fontSize: 14,
     fontFamily: "Inter_400Regular",
-    textAlign: "right",
+    textAlign: "center",
   },
-  pctWrap: { flexDirection: "row", alignItems: "center", gap: 4 },
+  pctInputWrap: { flexDirection: "row", alignItems: "center", gap: 3 },
   pctLabel: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  validationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  validationText: { fontSize: 13, fontFamily: "Inter_500Medium", flex: 1 },
 });
