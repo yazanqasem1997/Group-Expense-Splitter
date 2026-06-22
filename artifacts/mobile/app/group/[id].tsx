@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,11 +18,12 @@ import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
+import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
 import { Expense, Settlement, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
-type Tab = "expenses" | "balances";
+type Tab = "expenses" | "balances" | "charts";
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -39,11 +41,33 @@ export default function GroupDetailScreen() {
   } = useApp();
 
   const [tab, setTab] = useState<Tab>("expenses");
+  const { width } = useWindowDimensions();
 
   const group = getGroupById(id);
   const groupExpenses = getGroupExpenses(id);
   const groupSettlements = getGroupSettlements(id);
   const debts = useMemo(() => getGroupBalances(id), [id, getGroupBalances]);
+
+  const chartSeries: ChartSeries[] = useMemo(() => {
+    if (!group || groupExpenses.length === 0) return [];
+    const sorted = [...groupExpenses].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    return group.memberIds.map(memberId => {
+      const member = getMemberById(memberId);
+      let cumulative = 0;
+      const points: { timestamp: number; value: number }[] = [];
+      sorted.forEach(expense => {
+        if (expense.paidById === memberId) cumulative += expense.amount;
+        points.push({ timestamp: new Date(expense.createdAt).getTime(), value: cumulative });
+      });
+      return {
+        label: member?.isCurrentUser ? "You" : (member?.name?.split(" ")[0] ?? "?"),
+        color: member?.avatarColor ?? "#ccc",
+        points,
+      };
+    }).filter(s => s.points.some(p => p.value > 0));
+  }, [group, groupExpenses, getMemberById]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -265,7 +289,7 @@ export default function GroupDetailScreen() {
       </View>
 
       <View style={[styles.tabBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {(["expenses", "balances"] as Tab[]).map(t => (
+        {(["expenses", "balances", "charts"] as Tab[]).map(t => (
           <Pressable
             key={t}
             style={[styles.tabItem, tab === t && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
@@ -298,10 +322,69 @@ export default function GroupDetailScreen() {
           renderItem={({ item }) => renderExpenseItem(item)}
           showsVerticalScrollIndicator={false}
         />
-      ) : (
+      ) : tab === "balances" ? (
         <View style={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}>
           {renderBalances()}
         </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100, gap: 16 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.chartTitle, { color: colors.text }]}>Cumulative spending</Text>
+            <Text style={[styles.chartSub, { color: colors.textSecondary }]}>
+              Amount paid per person over time
+            </Text>
+            <LineChartSvg
+              series={chartSeries}
+              width={width - 64}
+              height={220}
+              formatY={v =>
+                v >= 1000
+                  ? `${v >= 10000 ? (v / 1000).toFixed(0) : (v / 1000).toFixed(1)}k`
+                  : v.toFixed(0)
+              }
+              textColor={colors.textTertiary}
+              gridColor={colors.border}
+              legendTextColor={colors.textSecondary}
+              emptyText="Add expenses to see spending trends"
+            />
+          </View>
+
+          <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.chartTitle, { color: colors.text }]}>Per-member totals</Text>
+            {group.memberIds.map(memberId => {
+              const member = getMemberById(memberId);
+              const paid = groupExpenses
+                .filter(e => e.paidById === memberId)
+                .reduce((s, e) => s + e.amount, 0);
+              const pct = totalExpenses > 0 ? paid / totalExpenses : 0;
+              if (!member) return null;
+              return (
+                <View key={memberId} style={styles.memberBar}>
+                  <View style={styles.memberBarLabel}>
+                    <View style={[styles.memberBarDot, { backgroundColor: member.avatarColor }]} />
+                    <Text style={[styles.memberBarName, { color: colors.text }]}>
+                      {member.isCurrentUser ? "You" : member.name.split(" ")[0]}
+                    </Text>
+                  </View>
+                  <View style={[styles.memberBarTrack, { backgroundColor: colors.border }]}>
+                    <View
+                      style={[
+                        styles.memberBarFill,
+                        { backgroundColor: member.avatarColor, width: `${Math.max(pct * 100, paid > 0 ? 2 : 0)}%` as any },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.memberBarValue, { color: colors.textSecondary }]}>
+                    {formatAmount(paid, group.currency)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
       )}
 
       <Pressable
@@ -449,4 +532,22 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  chartCard: {
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  chartTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  chartSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 14 },
+  memberBar: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 },
+  memberBarLabel: { width: 56, flexDirection: "row", alignItems: "center", gap: 6 },
+  memberBarDot: { width: 8, height: 8, borderRadius: 4 },
+  memberBarName: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
+  memberBarTrack: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden" },
+  memberBarFill: { height: 8, borderRadius: 4 },
+  memberBarValue: { width: 64, textAlign: "right", fontSize: 12, fontFamily: "Inter_500Medium" },
 });
