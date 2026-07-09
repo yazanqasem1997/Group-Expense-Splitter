@@ -1,15 +1,17 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -35,18 +37,40 @@ export default function GroupDetailScreen() {
     getGroupExpenses,
     getGroupSettlements,
     getGroupBalances,
+    getGroupPendingInvites,
+    sendGroupInvite,
     currentUser,
     deleteGroup,
     addSettlement,
   } = useApp();
 
   const [tab, setTab] = useState<Tab>("expenses");
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSent, setInviteSent] = useState(false);
+  const emailRef = useRef<TextInput>(null);
   const { width } = useWindowDimensions();
 
   const group = getGroupById(id);
   const groupExpenses = getGroupExpenses(id);
   const groupSettlements = getGroupSettlements(id);
   const debts = useMemo(() => getGroupBalances(id), [id, getGroupBalances]);
+  const pendingInvites = useMemo(() => getGroupPendingInvites(id), [id, getGroupPendingInvites]);
+
+  function handleSendInvite() {
+    const email = inviteEmail.trim();
+    if (!email) { setInviteError("Email is required"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setInviteError("Enter a valid email"); return; }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    sendGroupInvite(id, email, inviteName.trim() || undefined);
+    setInviteEmail("");
+    setInviteName("");
+    setInviteError("");
+    setInviteSent(true);
+    setTimeout(() => { setInviteSent(false); setShowInviteForm(false); }, 1800);
+  }
 
   const chartSeries: ChartSeries[] = useMemo(() => {
     if (!group || groupExpenses.length === 0) return [];
@@ -285,8 +309,87 @@ export default function GroupDetailScreen() {
               </View>
             );
           })}
+          {pendingInvites.map(inv => (
+            <View key={inv.id} style={styles.memberChip}>
+              <View style={[styles.pendingAvatar, { borderColor: colors.border }]}>
+                <Feather name="clock" size={14} color={colors.textTertiary} />
+              </View>
+              <Text style={[styles.memberName, { color: colors.textTertiary }]} numberOfLines={1}>
+                {inv.invitedName ?? inv.invitedEmail.split("@")[0]}
+              </Text>
+            </View>
+          ))}
+          <Pressable
+            style={[styles.inviteChip, { borderColor: colors.primary + "50" }]}
+            onPress={() => { setShowInviteForm(v => !v); setInviteError(""); }}
+          >
+            <Feather name="user-plus" size={14} color={colors.primary} />
+            <Text style={[styles.inviteChipText, { color: colors.primary }]}>Invite</Text>
+          </Pressable>
         </ScrollView>
       </View>
+
+      {showInviteForm && (
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={[styles.inviteForm, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+            {inviteSent ? (
+              <View style={styles.inviteSentRow}>
+                <Feather name="check-circle" size={18} color={colors.success} />
+                <Text style={[styles.inviteSentText, { color: colors.success }]}>Invite sent!</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={[styles.inviteFormTitle, { color: colors.text }]}>Invite to group</Text>
+                <View style={[styles.inviteInput, { backgroundColor: colors.inputBg, borderColor: inviteError ? colors.danger : colors.inputBorder }]}>
+                  <Feather name="mail" size={15} color={inviteError ? colors.danger : colors.textTertiary} style={{ marginRight: 6 }} />
+                  <TextInput
+                    ref={emailRef}
+                    style={[styles.inviteInputText, { color: colors.text }]}
+                    placeholder="Email address"
+                    placeholderTextColor={colors.textTertiary}
+                    value={inviteEmail}
+                    onChangeText={t => { setInviteEmail(t); setInviteError(""); }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoFocus
+                    returnKeyType="next"
+                  />
+                </View>
+                {inviteError ? (
+                  <Text style={[styles.inviteErrorText, { color: colors.danger }]}>{inviteError}</Text>
+                ) : null}
+                <View style={[styles.inviteInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, marginTop: 8 }]}>
+                  <Feather name="user" size={15} color={colors.textTertiary} style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={[styles.inviteInputText, { color: colors.text }]}
+                    placeholder="Name (optional)"
+                    placeholderTextColor={colors.textTertiary}
+                    value={inviteName}
+                    onChangeText={setInviteName}
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendInvite}
+                  />
+                </View>
+                <View style={styles.inviteFormActions}>
+                  <Pressable
+                    style={[styles.inviteFormBtn, styles.inviteFormCancel, { borderColor: colors.border }]}
+                    onPress={() => { setShowInviteForm(false); setInviteEmail(""); setInviteName(""); setInviteError(""); }}
+                  >
+                    <Text style={[styles.inviteFormBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.inviteFormBtn, styles.inviteFormSend, { backgroundColor: colors.primary }]}
+                    onPress={handleSendInvite}
+                  >
+                    <Text style={[styles.inviteFormBtnText, { color: "#fff" }]}>Send invite</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      )}
 
       <View style={[styles.tabBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         {(["expenses", "balances", "charts"] as Tab[]).map(t => (
@@ -550,4 +653,41 @@ const styles = StyleSheet.create({
   memberBarTrack: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden" },
   memberBarFill: { height: 8, borderRadius: 4 },
   memberBarValue: { width: 64, textAlign: "right", fontSize: 12, fontFamily: "Inter_500Medium" },
+
+  pendingAvatar: {
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 1.5, borderStyle: "dashed",
+    alignItems: "center", justifyContent: "center",
+  },
+  inviteChip: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 16, borderWidth: 1.5,
+    alignSelf: "center",
+  },
+  inviteChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+
+  inviteForm: {
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  inviteFormTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 10 },
+  inviteInput: {
+    flexDirection: "row", alignItems: "center",
+    borderWidth: 1, borderRadius: 10,
+    paddingHorizontal: 12, height: 42,
+  },
+  inviteInputText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
+  inviteErrorText: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 4, marginLeft: 2 },
+  inviteFormActions: { flexDirection: "row", gap: 8, marginTop: 12 },
+  inviteFormBtn: {
+    flex: 1, height: 38, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+  },
+  inviteFormCancel: { borderWidth: 1 },
+  inviteFormSend: {},
+  inviteFormBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  inviteSentRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  inviteSentText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });
