@@ -149,7 +149,7 @@ export default function GroupsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { groups, getTotalOwed, getPendingInvitesForCurrentUser } = useApp();
-  const { youOwe, youAreOwed } = useMemo(() => getTotalOwed(), [getTotalOwed]);
+  const { youOwe, youAreOwed, currency: totalCurrency } = useMemo(() => getTotalOwed(), [getTotalOwed]);
 
   const activeGroups = groups.filter(g => !g.isArchived);
   const pendingInvites = getPendingInvitesForCurrentUser();
@@ -185,7 +185,7 @@ export default function GroupsScreen() {
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>You owe</Text>
               <Text style={[styles.summaryAmount, { color: colors.negative }]}>
-                {formatAmount(youOwe)}
+                {formatAmount(youOwe, totalCurrency)}
               </Text>
             </View>
           )}
@@ -198,7 +198,7 @@ export default function GroupsScreen() {
                 You are owed
               </Text>
               <Text style={[styles.summaryAmount, { color: colors.positive }]}>
-                {formatAmount(youAreOwed)}
+                {formatAmount(youAreOwed, totalCurrency)}
               </Text>
             </View>
           )}

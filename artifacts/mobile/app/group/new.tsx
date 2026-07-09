@@ -40,11 +40,11 @@ function isValidEmail(email: string) {
 export default function NewGroupScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { members, currentUser, addGroup, addMember } = useApp();
+  const { members, currentUser, addGroup, addMember, defaultCurrency } = useApp();
 
   const [name, setName] = useState("");
   const [groupType, setGroupType] = useState<Group["type"]>("friends");
-  const [currency, setCurrency] = useState<Currency>("USD");
+  const [currency, setCurrency] = useState<Currency>(defaultCurrency);
   const [selectedIds, setSelectedIds] = useState<string[]>([currentUser.id]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [pendingInvites, setPendingInvites] = useState<{ email: string; tempId: string }[]>([]);
