@@ -117,7 +117,15 @@ export type ExpenseCategory =
   | "food" | "transport" | "accommodation" | "entertainment"
   | "utilities" | "shopping" | "health" | "other";
 
-export type NotifPrefs = { expenseAdded: boolean; settlement: boolean; invite: boolean };
+export type NotifPrefs = {
+  expenseAdded: boolean;
+  expenseEdited: boolean;
+  expenseDeleted: boolean;
+  settlement: boolean;
+  invite: boolean;
+  comment: boolean;
+  reaction: boolean;
+};
 
 export interface Settlement {
   id: string;
@@ -1113,7 +1121,15 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const SIMPLIFY_KEY = "@spliteasy_simplify";
 const CUSTOM_CATS_KEY = "@spliteasy_custom_cats";
 const NOTIF_KEY = "@spliteasy_notifs";
-const DEFAULT_NOTIF_PREFS: NotifPrefs = { expenseAdded: true, settlement: true, invite: true };
+const DEFAULT_NOTIF_PREFS: NotifPrefs = {
+  expenseAdded: true,
+  expenseEdited: true,
+  expenseDeleted: true,
+  settlement: true,
+  invite: true,
+  comment: true,
+  reaction: true,
+};
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
@@ -1406,7 +1422,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = expenses.map(e => (e.id === id ? { ...e, ...updates } : e));
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
-      if (notifPrefs.expenseAdded && prev && !updates.reactions && !updates.comments) {
+      if (notifPrefs.expenseEdited && prev && !updates.reactions && !updates.comments) {
         showToast(`"${prev.description}" was updated`, "info");
       }
     },
@@ -1419,7 +1435,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = expenses.filter(e => e.id !== id);
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
-      if (notifPrefs.expenseAdded && target) {
+      if (notifPrefs.expenseDeleted && target) {
         showToast(`"${target.description}" deleted`, "warning");
       }
     },
@@ -1443,12 +1459,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
+      if (notifPrefs.comment) {
+        showToast("Comment added", "success");
+      }
     },
-    [currentUser.id, members, groups, expenses, settlements, invitations, saveData]
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
   );
 
   const toggleReaction = useCallback(
     (expenseId: string, emoji: string) => {
+      let isAdding = false;
       const updated = expenses.map(e => {
         if (e.id !== expenseId) return e;
         const reactions = { ...(e.reactions ?? {}) };
@@ -1457,15 +1477,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const next = existing.filter(id => id !== currentUser.id);
           if (next.length === 0) delete reactions[emoji];
           else reactions[emoji] = next;
+          isAdding = false;
         } else {
           reactions[emoji] = [...existing, currentUser.id];
+          isAdding = true;
         }
         return { ...e, reactions };
       });
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
+      if (notifPrefs.reaction && isAdding) {
+        showToast(`${emoji} reaction added`, "success");
+      }
     },
-    [currentUser.id, members, groups, expenses, settlements, invitations, saveData]
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
   );
 
   const addSettlement = useCallback(
