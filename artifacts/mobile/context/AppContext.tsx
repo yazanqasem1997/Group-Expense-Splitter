@@ -77,6 +77,23 @@ export interface Group {
   isArchived?: boolean;
 }
 
+export interface GroupInvitation {
+  id: string;
+  groupId: string;
+  groupName: string;
+  groupEmoji: string;
+  groupCurrency: Currency;
+  groupType: Group["type"];
+  inviterUserId: string;
+  inviterName: string;
+  inviterAvatarColor: string;
+  invitedEmail: string;
+  invitedName?: string;
+  invitedMemberId?: string;
+  status: "pending" | "accepted" | "declined";
+  createdAt: string;
+}
+
 export interface Balance {
   memberId: string;
   amount: number;
@@ -94,6 +111,7 @@ interface AppContextType {
   groups: Group[];
   expenses: Expense[];
   settlements: Settlement[];
+  invitations: GroupInvitation[];
   simplifyDebtsEnabled: boolean;
   toggleSimplifyDebts: () => void;
   addMember: (member: Omit<Member, "id">) => Member;
@@ -104,6 +122,11 @@ interface AppContextType {
   updateExpense: (id: string, updates: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
   addSettlement: (settlement: Omit<Settlement, "id" | "createdAt">) => void;
+  sendGroupInvite: (groupId: string, email: string, name?: string) => GroupInvitation | null;
+  acceptInvitation: (invitationId: string) => void;
+  declineInvitation: (invitationId: string) => void;
+  getPendingInvitesForCurrentUser: () => GroupInvitation[];
+  getGroupPendingInvites: (groupId: string) => GroupInvitation[];
   getGroupBalances: (groupId: string) => DebtRelation[];
   getTotalOwed: () => { youOwe: number; youAreOwed: number };
   getMemberById: (id: string) => Member | undefined;
@@ -113,7 +136,7 @@ interface AppContextType {
   isLoading: boolean;
 }
 
-const STORAGE_KEY = "spliteasy_data";
+const STORAGE_KEY = "spliteasy_data_v2";
 
 const DEFAULT_AVATAR_COLORS = [
   "#FF6B35", "#7C3AED", "#0EA5E9", "#F59E0B",
@@ -224,6 +247,24 @@ const defaultExpenses: Expense[] = [
   },
 ];
 
+const defaultInvitations: GroupInvitation[] = [
+  {
+    id: "inv_demo_1",
+    groupId: "group_invite_paris",
+    groupName: "Weekend in Paris",
+    groupEmoji: "🗼",
+    groupCurrency: "EUR",
+    groupType: "trip",
+    inviterUserId: "user_2",
+    inviterName: "Alex Chen",
+    inviterAvatarColor: "#7C3AED",
+    invitedEmail: "you@example.com",
+    invitedMemberId: CURRENT_USER_ID,
+    status: "pending",
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
 function rawPairwiseDebts(groupExpenses: Expense[], groupSettlements: Settlement[], memberIds: string[]): DebtRelation[] {
   const pairBalance: Record<string, Record<string, number>> = {};
 
@@ -309,6 +350,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [groups, setGroups] = useState<Group[]>(defaultGroups);
   const [expenses, setExpenses] = useState<Expense[]>(defaultExpenses);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [invitations, setInvitations] = useState<GroupInvitation[]>(defaultInvitations);
   const [isLoading, setIsLoading] = useState(true);
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
 
@@ -325,6 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (data.groups) setGroups(data.groups);
         if (data.expenses) setExpenses(data.expenses);
         if (data.settlements) setSettlements(data.settlements);
+        if (data.invitations !== undefined) setInvitations(data.invitations);
       }
       const simplifyStored = await AsyncStorage.getItem(SIMPLIFY_KEY);
       if (simplifyStored !== null) setSimplifyDebtsEnabled(simplifyStored === "true");
@@ -347,7 +390,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatedMembers: Member[],
       updatedGroups: Group[],
       updatedExpenses: Expense[],
-      updatedSettlements: Settlement[]
+      updatedSettlements: Settlement[],
+      updatedInvitations: GroupInvitation[]
     ) => {
       try {
         await AsyncStorage.setItem(
@@ -357,6 +401,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             groups: updatedGroups,
             expenses: updatedExpenses,
             settlements: updatedSettlements,
+            invitations: updatedInvitations,
           })
         );
       } catch (e) {}
@@ -377,10 +422,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       const updated = [...members, newMember];
       setMembers(updated);
-      saveData(updated, groups, expenses, settlements);
+      saveData(updated, groups, expenses, settlements, invitations);
       return newMember;
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const addGroup = useCallback(
@@ -392,19 +437,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       const updated = [newGroup, ...groups];
       setGroups(updated);
-      saveData(members, updated, expenses, settlements);
+      saveData(members, updated, expenses, settlements, invitations);
       return newGroup;
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const updateGroup = useCallback(
     (id: string, updates: Partial<Group>) => {
       const updated = groups.map(g => (g.id === id ? { ...g, ...updates } : g));
       setGroups(updated);
-      saveData(members, updated, expenses, settlements);
+      saveData(members, updated, expenses, settlements, invitations);
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const deleteGroup = useCallback(
@@ -412,12 +457,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updatedGroups = groups.filter(g => g.id !== id);
       const updatedExpenses = expenses.filter(e => e.groupId !== id);
       const updatedSettlements = settlements.filter(s => s.groupId !== id);
+      const updatedInvitations = invitations.filter(i => i.groupId !== id);
       setGroups(updatedGroups);
       setExpenses(updatedExpenses);
       setSettlements(updatedSettlements);
-      saveData(members, updatedGroups, updatedExpenses, updatedSettlements);
+      setInvitations(updatedInvitations);
+      saveData(members, updatedGroups, updatedExpenses, updatedSettlements, updatedInvitations);
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const addExpense = useCallback(
@@ -429,27 +476,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       const updated = [newExpense, ...expenses];
       setExpenses(updated);
-      saveData(members, groups, updated, settlements);
+      saveData(members, groups, updated, settlements, invitations);
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const updateExpense = useCallback(
     (id: string, updates: Partial<Expense>) => {
       const updated = expenses.map(e => (e.id === id ? { ...e, ...updates } : e));
       setExpenses(updated);
-      saveData(members, groups, updated, settlements);
+      saveData(members, groups, updated, settlements, invitations);
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const deleteExpense = useCallback(
     (id: string) => {
       const updated = expenses.filter(e => e.id !== id);
       setExpenses(updated);
-      saveData(members, groups, updated, settlements);
+      saveData(members, groups, updated, settlements, invitations);
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const addSettlement = useCallback(
@@ -461,9 +508,95 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       const updated = [newSettlement, ...settlements];
       setSettlements(updated);
-      saveData(members, groups, expenses, updated);
+      saveData(members, groups, expenses, updated, invitations);
     },
-    [members, groups, expenses, settlements, saveData]
+    [members, groups, expenses, settlements, invitations, saveData]
+  );
+
+  const sendGroupInvite = useCallback(
+    (groupId: string, email: string, name?: string): GroupInvitation | null => {
+      const group = groups.find(g => g.id === groupId);
+      if (!group) return null;
+
+      const existing = invitations.find(
+        i => i.groupId === groupId && i.invitedEmail.toLowerCase() === email.toLowerCase() && i.status === "pending"
+      );
+      if (existing) return existing;
+
+      const newInvite: GroupInvitation = {
+        id: genId(),
+        groupId,
+        groupName: group.name,
+        groupEmoji: group.emoji,
+        groupCurrency: group.currency,
+        groupType: group.type,
+        inviterUserId: CURRENT_USER_ID,
+        inviterName: "You",
+        inviterAvatarColor: currentUser.avatarColor,
+        invitedEmail: email,
+        invitedName: name || email.split("@")[0],
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+
+      const updated = [...invitations, newInvite];
+      setInvitations(updated);
+      saveData(members, groups, expenses, settlements, updated);
+      return newInvite;
+    },
+    [members, groups, expenses, settlements, invitations, currentUser, saveData]
+  );
+
+  const acceptInvitation = useCallback(
+    (invitationId: string) => {
+      const invite = invitations.find(i => i.id === invitationId);
+      if (!invite) return;
+
+      const newGroup: Group = {
+        id: invite.groupId,
+        name: invite.groupName,
+        emoji: invite.groupEmoji,
+        currency: invite.groupCurrency,
+        type: invite.groupType,
+        memberIds: [invite.inviterUserId, CURRENT_USER_ID],
+        createdAt: invite.createdAt,
+      };
+
+      const updatedGroups = [newGroup, ...groups];
+      const updatedInvitations = invitations.map(i =>
+        i.id === invitationId ? { ...i, status: "accepted" as const } : i
+      );
+
+      setGroups(updatedGroups);
+      setInvitations(updatedInvitations);
+      saveData(members, updatedGroups, expenses, settlements, updatedInvitations);
+    },
+    [members, groups, expenses, settlements, invitations, saveData]
+  );
+
+  const declineInvitation = useCallback(
+    (invitationId: string) => {
+      const updatedInvitations = invitations.filter(i => i.id !== invitationId);
+      setInvitations(updatedInvitations);
+      saveData(members, groups, expenses, settlements, updatedInvitations);
+    },
+    [members, groups, expenses, settlements, invitations, saveData]
+  );
+
+  const getPendingInvitesForCurrentUser = useCallback(
+    () =>
+      invitations.filter(
+        i => i.invitedMemberId === CURRENT_USER_ID && i.status === "pending"
+      ),
+    [invitations]
+  );
+
+  const getGroupPendingInvites = useCallback(
+    (groupId: string) =>
+      invitations.filter(
+        i => i.groupId === groupId && i.inviterUserId === CURRENT_USER_ID && i.status === "pending"
+      ),
+    [invitations]
   );
 
   const getGroupBalances = useCallback(
@@ -553,6 +686,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         groups,
         expenses,
         settlements,
+        invitations,
         simplifyDebtsEnabled,
         toggleSimplifyDebts,
         addMember,
@@ -563,6 +697,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateExpense,
         deleteExpense,
         addSettlement,
+        sendGroupInvite,
+        acceptInvitation,
+        declineInvitation,
+        getPendingInvitesForCurrentUser,
+        getGroupPendingInvites,
         getGroupBalances,
         getTotalOwed,
         getMemberById,
