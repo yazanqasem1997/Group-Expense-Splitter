@@ -168,6 +168,29 @@ export default function AnalyticsScreen() {
 
   const sym = CURRENCY_SYMBOLS[activeCurrency] ?? "$";
 
+  const monthlySummary = useMemo(() => {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+    const thisMonthExpenses = expenses.filter(e => {
+      const ts = new Date(e.createdAt).getTime();
+      const inGroup = selectedGroupId === "all" || e.groupId === selectedGroupId;
+      return ts >= thisMonthStart && e.paidById === currentUser.id && inGroup;
+    });
+    const lastMonthExpenses = expenses.filter(e => {
+      const ts = new Date(e.createdAt).getTime();
+      const inGroup = selectedGroupId === "all" || e.groupId === selectedGroupId;
+      return ts >= lastMonthStart && ts < thisMonthStart && e.paidById === currentUser.id && inGroup;
+    });
+    const thisTotal = thisMonthExpenses.reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0);
+    const lastTotal = lastMonthExpenses.reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0);
+    const diff = thisTotal - lastTotal;
+    const pct = lastTotal > 0 ? (diff / lastTotal) * 100 : thisTotal > 0 ? 100 : 0;
+    const monthLabel = now.toLocaleString("default", { month: "long" });
+    const lastMonthLabel = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleString("default", { month: "long" });
+    return { thisTotal, lastTotal, diff, pct, monthLabel, lastMonthLabel };
+  }, [expenses, selectedGroupId, currentUser.id, activeCurrency, hasRates]);
+
   const availableCurrencies = useMemo(() => {
     const set = new Set<Currency>();
     set.add(defaultCurrency);
@@ -267,6 +290,57 @@ export default function AnalyticsScreen() {
             {!hasRates && <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>· rates offline</Text>}
           </View>
         )}
+
+        {/* Monthly Summary */}
+        <View style={[styles.monthlySummaryCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.monthlyHeader}>
+            <View style={[styles.monthlyIcon, { backgroundColor: colors.primaryLight }]}>
+              <Feather name="calendar" size={16} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.monthlyTitle, { color: colors.text }]}>Monthly Summary</Text>
+              <Text style={[styles.monthlySub, { color: colors.textSecondary }]}>
+                {monthlySummary.monthLabel} vs {monthlySummary.lastMonthLabel}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.monthlyStats}>
+            <View style={styles.monthlyStatItem}>
+              <Text style={[styles.monthlyStatAmt, { color: colors.text }]}>
+                {sym}{monthlySummary.thisTotal.toFixed(0)}
+              </Text>
+              <Text style={[styles.monthlyStatLabel, { color: colors.textSecondary }]}>
+                This month
+              </Text>
+            </View>
+            <View style={[styles.monthlyDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.monthlyStatItem}>
+              <Text style={[styles.monthlyStatAmt, { color: colors.textSecondary }]}>
+                {sym}{monthlySummary.lastTotal.toFixed(0)}
+              </Text>
+              <Text style={[styles.monthlyStatLabel, { color: colors.textSecondary }]}>
+                {monthlySummary.lastMonthLabel}
+              </Text>
+            </View>
+            <View style={[styles.monthlyDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.monthlyStatItem}>
+              <View style={styles.monthlyDeltaRow}>
+                <Feather
+                  name={monthlySummary.diff >= 0 ? "trending-up" : "trending-down"}
+                  size={14}
+                  color={monthlySummary.diff >= 0 ? colors.danger : colors.success}
+                />
+                <Text style={[
+                  styles.monthlyStatAmt,
+                  { color: monthlySummary.diff >= 0 ? colors.danger : colors.success },
+                ]}>
+                  {monthlySummary.diff >= 0 ? "+" : ""}{monthlySummary.pct.toFixed(0)}%
+                </Text>
+              </View>
+              <Text style={[styles.monthlyStatLabel, { color: colors.textSecondary }]}>vs last month</Text>
+            </View>
+          </View>
+        </View>
 
         {/* Summary cards */}
         <View style={styles.summaryRow}>
@@ -411,4 +485,18 @@ const styles = StyleSheet.create({
   catBarBg: { ...StyleSheet.absoluteFillObject, borderRadius: 4 },
   catBar: { height: 8, borderRadius: 4, zIndex: 1 },
   catValue: { width: 52, textAlign: "right", fontSize: 12, fontFamily: "Inter_500Medium" },
+  monthlySummaryCard: {
+    marginHorizontal: 16, borderRadius: 16, padding: 16, gap: 14,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+  },
+  monthlyHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  monthlyIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  monthlyTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  monthlySub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  monthlyStats: { flexDirection: "row", alignItems: "center" },
+  monthlyStatItem: { flex: 1, alignItems: "center", gap: 4 },
+  monthlyStatAmt: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  monthlyStatLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  monthlyDivider: { width: 1, height: 40, marginHorizontal: 4 },
+  monthlyDeltaRow: { flexDirection: "row", alignItems: "center", gap: 4 },
 });

@@ -49,6 +49,53 @@ export interface SplitDetail {
 
 export type SplitType = "equal" | "exact" | "percentage";
 
+export interface ExpenseComment {
+  id: string;
+  memberId: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface GroupMessage {
+  id: string;
+  groupId: string;
+  memberId: string;
+  text: string;
+  createdAt: string;
+}
+
+export type RecurringFrequency = "weekly" | "biweekly" | "monthly" | "quarterly";
+
+export const RECURRING_FREQUENCY_DAYS: Record<RecurringFrequency, number> = {
+  weekly: 7,
+  biweekly: 14,
+  monthly: 30,
+  quarterly: 90,
+};
+
+export const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
+  weekly: "Every week",
+  biweekly: "Every 2 weeks",
+  monthly: "Every month",
+  quarterly: "Every 3 months",
+};
+
+export interface RecurringExpense {
+  id: string;
+  groupId: string;
+  description: string;
+  amount: number;
+  currency: Currency;
+  paidById: string;
+  splitType: SplitType;
+  splits: SplitDetail[];
+  category: string;
+  frequency: RecurringFrequency;
+  nextDueAt: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface Expense {
   id: string;
   groupId: string;
@@ -62,17 +109,13 @@ export interface Expense {
   category: string;
   notes?: string;
   addedBy?: string;
+  comments?: ExpenseComment[];
+  reactions?: Record<string, string[]>;
 }
 
 export type ExpenseCategory =
-  | "food"
-  | "transport"
-  | "accommodation"
-  | "entertainment"
-  | "utilities"
-  | "shopping"
-  | "health"
-  | "other";
+  | "food" | "transport" | "accommodation" | "entertainment"
+  | "utilities" | "shopping" | "health" | "other";
 
 export type NotifPrefs = { expenseAdded: boolean; settlement: boolean; invite: boolean };
 
@@ -96,6 +139,8 @@ export interface Group {
   createdAt: string;
   type: "trip" | "home" | "friends" | "couple" | "other";
   isArchived?: boolean;
+  archivedAt?: string;
+  reminderDays?: number;
 }
 
 export interface GroupInvitation {
@@ -151,9 +196,13 @@ interface AppContextType {
   addGroup: (group: Omit<Group, "id" | "createdAt">) => Group;
   updateGroup: (id: string, updates: Partial<Group>) => void;
   deleteGroup: (id: string) => void;
+  archiveGroup: (id: string) => void;
+  unarchiveGroup: (id: string) => void;
   addExpense: (expense: Omit<Expense, "id" | "createdAt">) => void;
   updateExpense: (id: string, updates: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
+  addExpenseComment: (expenseId: string, text: string) => void;
+  toggleReaction: (expenseId: string, emoji: string) => void;
   addSettlement: (settlement: Omit<Settlement, "id" | "createdAt">) => void;
   sendGroupInvite: (groupId: string, email: string, name?: string) => GroupInvitation | null;
   acceptInvitation: (invitationId: string) => void;
@@ -166,10 +215,21 @@ interface AppContextType {
   getGroupById: (id: string) => Group | undefined;
   getGroupExpenses: (groupId: string) => Expense[];
   getGroupSettlements: (groupId: string) => Settlement[];
+  groupMessages: GroupMessage[];
+  addGroupMessage: (groupId: string, text: string) => GroupMessage;
+  getGroupMessages: (groupId: string) => GroupMessage[];
+  recurringExpenses: RecurringExpense[];
+  addRecurringExpense: (r: Omit<RecurringExpense, "id" | "createdAt">) => RecurringExpense;
+  updateRecurringExpense: (id: string, updates: Partial<RecurringExpense>) => void;
+  deleteRecurringExpense: (id: string) => void;
+  checkAndAddRecurring: () => number;
   isLoading: boolean;
 }
 
+export const CURRENT_USER_ID_EXPORT = "user_current";
 const STORAGE_KEY = "spliteasy_data_v2";
+const MESSAGES_KEY = "@spliteasy_messages";
+const RECURRING_KEY = "@spliteasy_recurring";
 
 const DEFAULT_AVATAR_COLORS = [
   "#FF6B35", "#7C3AED", "#0EA5E9", "#F59E0B",
@@ -229,6 +289,10 @@ const defaultExpenses: Expense[] = [
     ],
     createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     category: "accommodation",
+    reactions: { "👍": ["user_2"], "❤️": ["user_3"] },
+    comments: [
+      { id: "c1", memberId: "user_2", text: "Great find! Love the location.", createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString() },
+    ],
   },
   {
     id: "exp_2",
@@ -294,6 +358,23 @@ const defaultInvitations: GroupInvitation[] = [
     invitedEmail: "you@example.com",
     invitedMemberId: CURRENT_USER_ID,
     status: "pending",
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
+const defaultGroupMessages: GroupMessage[] = [
+  {
+    id: "msg_1",
+    groupId: "group_1",
+    memberId: "user_2",
+    text: "Hey, should we book dinner for tonight?",
+    createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "msg_2",
+    groupId: "group_1",
+    memberId: "user_current",
+    text: "Yes! I found a great tapas place 🍷",
     createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   },
 ];
@@ -388,6 +469,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>(defaultExpenses);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [invitations, setInvitations] = useState<GroupInvitation[]>(defaultInvitations);
+  const [groupMessages, setGroupMessages] = useState<GroupMessage[]>(defaultGroupMessages);
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
   const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
@@ -399,6 +482,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadData();
   }, []);
+
+  const genId = () =>
+    Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
   const loadData = async () => {
     try {
@@ -415,10 +501,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (data.settlements) setSettlements(data.settlements);
         if (data.invitations !== undefined) setInvitations(data.invitations);
       }
+
       const simplifyStored = await AsyncStorage.getItem(SIMPLIFY_KEY);
       if (simplifyStored !== null) setSimplifyDebtsEnabled(simplifyStored === "true");
+
       const currencyStored = await AsyncStorage.getItem("@spliteasy_defaultCurrency");
       if (currencyStored) setDefaultCurrencyState(currencyStored as Currency);
+
       const ratesStored = await AsyncStorage.getItem("@spliteasy_rates");
       if (ratesStored) {
         const { rates, updated } = JSON.parse(ratesStored);
@@ -429,12 +518,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } else {
         fetchExchangeRates();
       }
+
       const customCatsStored = await AsyncStorage.getItem(CUSTOM_CATS_KEY);
       if (customCatsStored) setCustomCategories(JSON.parse(customCatsStored));
+
       const notifStored = await AsyncStorage.getItem(NOTIF_KEY);
       if (notifStored) {
         try { setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...JSON.parse(notifStored) }); } catch {}
       }
+
+      const messagesStored = await AsyncStorage.getItem(MESSAGES_KEY);
+      if (messagesStored) {
+        const msgs = JSON.parse(messagesStored);
+        setGroupMessages(msgs.length > 0 ? msgs : defaultGroupMessages);
+      }
+
+      const recurringStored = await AsyncStorage.getItem(RECURRING_KEY);
+      if (recurringStored) setRecurringExpenses(JSON.parse(recurringStored));
+
     } catch (e) {
     } finally {
       setIsLoading(false);
@@ -510,6 +611,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const saveMessages = useCallback(async (msgs: GroupMessage[]) => {
+    try { await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(msgs)); } catch {}
+  }, []);
+
+  const saveRecurring = useCallback(async (items: RecurringExpense[]) => {
+    try { await AsyncStorage.setItem(RECURRING_KEY, JSON.stringify(items)); } catch {}
+  }, []);
+
   const updateCurrentUser = useCallback(
     (updates: Partial<Omit<Member, "id" | "isCurrentUser">>) => {
       const updated: Member = { ...currentUser, ...updates };
@@ -520,9 +629,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [currentUser, members, groups, expenses, settlements, invitations, saveData]
   );
-
-  const genId = () =>
-    Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
   const addMember = useCallback(
     (member: Omit<Member, "id">) => {
@@ -562,6 +668,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveData(members, updated, expenses, settlements, invitations);
     },
     [members, groups, expenses, settlements, invitations, saveData]
+  );
+
+  const archiveGroup = useCallback(
+    (id: string) => {
+      const updated = groups.map(g =>
+        g.id === id ? { ...g, isArchived: true, archivedAt: new Date().toISOString() } : g
+      );
+      setGroups(updated);
+      saveData(members, updated, expenses, settlements, invitations);
+      showToast("Group archived", "info");
+    },
+    [members, groups, expenses, settlements, invitations, saveData, showToast]
+  );
+
+  const unarchiveGroup = useCallback(
+    (id: string) => {
+      const updated = groups.map(g =>
+        g.id === id ? { ...g, isArchived: false, archivedAt: undefined } : g
+      );
+      setGroups(updated);
+      saveData(members, updated, expenses, settlements, invitations);
+      showToast("Group restored", "success");
+    },
+    [members, groups, expenses, settlements, invitations, saveData, showToast]
   );
 
   const deleteGroup = useCallback(
@@ -622,7 +752,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = expenses.map(e => (e.id === id ? { ...e, ...updates } : e));
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
-      if (notifPrefs.expenseAdded && prev) {
+      if (notifPrefs.expenseAdded && prev && !updates.reactions && !updates.comments) {
         showToast(`"${prev.description}" was updated`, "info");
       }
     },
@@ -640,6 +770,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+  );
+
+  const addExpenseComment = useCallback(
+    (expenseId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const newComment: ExpenseComment = {
+        id: genId(),
+        memberId: currentUser.id,
+        text: trimmed,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = expenses.map(e =>
+        e.id === expenseId
+          ? { ...e, comments: [...(e.comments ?? []), newComment] }
+          : e
+      );
+      setExpenses(updated);
+      saveData(members, groups, updated, settlements, invitations);
+    },
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData]
+  );
+
+  const toggleReaction = useCallback(
+    (expenseId: string, emoji: string) => {
+      const updated = expenses.map(e => {
+        if (e.id !== expenseId) return e;
+        const reactions = { ...(e.reactions ?? {}) };
+        const existing = reactions[emoji] ?? [];
+        if (existing.includes(currentUser.id)) {
+          const next = existing.filter(id => id !== currentUser.id);
+          if (next.length === 0) delete reactions[emoji];
+          else reactions[emoji] = next;
+        } else {
+          reactions[emoji] = [...existing, currentUser.id];
+        }
+        return { ...e, reactions };
+      });
+      setExpenses(updated);
+      saveData(members, groups, updated, settlements, invitations);
+    },
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData]
   );
 
   const addSettlement = useCallback(
@@ -730,10 +902,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getPendingInvitesForCurrentUser = useCallback(
-    () =>
-      invitations.filter(
-        i => i.invitedMemberId === CURRENT_USER_ID && i.status === "pending"
-      ),
+    () => invitations.filter(i => i.invitedMemberId === CURRENT_USER_ID && i.status === "pending"),
     [invitations]
   );
 
@@ -825,6 +994,105 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [settlements]
   );
 
+  const addGroupMessage = useCallback(
+    (groupId: string, text: string): GroupMessage => {
+      const msg: GroupMessage = {
+        id: genId(),
+        groupId,
+        memberId: currentUser.id,
+        text: text.trim(),
+        createdAt: new Date().toISOString(),
+      };
+      const updated = [...groupMessages, msg];
+      setGroupMessages(updated);
+      saveMessages(updated);
+      return msg;
+    },
+    [currentUser.id, groupMessages, saveMessages]
+  );
+
+  const getGroupMessages = useCallback(
+    (groupId: string) => groupMessages.filter(m => m.groupId === groupId),
+    [groupMessages]
+  );
+
+  const addRecurringExpense = useCallback(
+    (r: Omit<RecurringExpense, "id" | "createdAt">): RecurringExpense => {
+      const newR: RecurringExpense = { ...r, id: genId(), createdAt: new Date().toISOString() };
+      const updated = [...recurringExpenses, newR];
+      setRecurringExpenses(updated);
+      saveRecurring(updated);
+      showToast(`Recurring "${r.description}" set up ✓`, "success");
+      return newR;
+    },
+    [recurringExpenses, saveRecurring, showToast]
+  );
+
+  const updateRecurringExpense = useCallback(
+    (id: string, updates: Partial<RecurringExpense>) => {
+      const updated = recurringExpenses.map(r => r.id === id ? { ...r, ...updates } : r);
+      setRecurringExpenses(updated);
+      saveRecurring(updated);
+    },
+    [recurringExpenses, saveRecurring]
+  );
+
+  const deleteRecurringExpense = useCallback(
+    (id: string) => {
+      const updated = recurringExpenses.filter(r => r.id !== id);
+      setRecurringExpenses(updated);
+      saveRecurring(updated);
+    },
+    [recurringExpenses, saveRecurring]
+  );
+
+  const checkAndAddRecurring = useCallback((): number => {
+    const now = new Date();
+    let added = 0;
+    let updatedRecurring = [...recurringExpenses];
+    let updatedExpenses = [...expenses];
+
+    recurringExpenses.forEach(r => {
+      if (!r.isActive) return;
+      const due = new Date(r.nextDueAt);
+      if (due > now) return;
+
+      const newExpense: Expense = {
+        id: genId(),
+        groupId: r.groupId,
+        description: r.description,
+        amount: r.amount,
+        currency: r.currency,
+        paidById: r.paidById,
+        splitType: r.splitType,
+        splits: r.splits,
+        category: r.category,
+        createdAt: now.toISOString(),
+        addedBy: CURRENT_USER_ID,
+      };
+      updatedExpenses = [newExpense, ...updatedExpenses];
+
+      const intervalMs = RECURRING_FREQUENCY_DAYS[r.frequency] * 24 * 60 * 60 * 1000;
+      let nextDue = new Date(r.nextDueAt);
+      while (nextDue <= now) nextDue = new Date(nextDue.getTime() + intervalMs);
+
+      updatedRecurring = updatedRecurring.map(rec =>
+        rec.id === r.id ? { ...rec, nextDueAt: nextDue.toISOString() } : rec
+      );
+      added++;
+    });
+
+    if (added > 0) {
+      setExpenses(updatedExpenses);
+      setRecurringExpenses(updatedRecurring);
+      saveData(members, groups, updatedExpenses, settlements, invitations);
+      saveRecurring(updatedRecurring);
+      showToast(`${added} recurring expense${added > 1 ? "s" : ""} added`, "success");
+    }
+
+    return added;
+  }, [recurringExpenses, expenses, members, groups, settlements, invitations, saveData, saveRecurring, showToast]);
+
   return (
     <AppContext.Provider
       value={{
@@ -851,10 +1119,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addMember,
         addGroup,
         updateGroup,
+        archiveGroup,
+        unarchiveGroup,
         deleteGroup,
         addExpense,
         updateExpense,
         deleteExpense,
+        addExpenseComment,
+        toggleReaction,
         addSettlement,
         sendGroupInvite,
         acceptInvitation,
@@ -867,6 +1139,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getGroupById,
         getGroupExpenses,
         getGroupSettlements,
+        groupMessages,
+        addGroupMessage,
+        getGroupMessages,
+        recurringExpenses,
+        addRecurringExpense,
+        updateRecurringExpense,
+        deleteRecurringExpense,
+        checkAndAddRecurring,
         isLoading,
       }}
     >
@@ -877,8 +1157,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 export function useApp() {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useApp must be inside AppProvider");
+  if (!ctx) throw new Error("useApp must be used within AppProvider");
   return ctx;
 }
-
-export const CURRENT_USER_ID_EXPORT = CURRENT_USER_ID;

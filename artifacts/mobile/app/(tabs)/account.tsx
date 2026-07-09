@@ -1,8 +1,11 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
 import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -17,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
 import { Currency, useApp } from "@/context/AppContext";
+import { useBiometric } from "@/context/BiometricContext";
 import { useTheme } from "@/hooks/useTheme";
 
 
@@ -151,12 +155,13 @@ export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const {
     currentUser, updateCurrentUser,
-    expenses, groups, settlements,
+    expenses, groups, settlements, recurringExpenses,
     simplifyDebtsEnabled, toggleSimplifyDebts,
     defaultCurrency, setDefaultCurrency,
     exchangeRates, ratesUpdated, fetchExchangeRates,
     notifPrefs, updateNotifPref,
   } = useApp();
+  const { biometricEnabled, setBiometricEnabled, biometricAvailable, biometricType, unlock } = useBiometric();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const myExpensesCount = expenses.filter(e => e.paidById === currentUser.id).length;
@@ -359,6 +364,57 @@ export default function AccountScreen() {
             </Text>
           ))}
         </View>
+      </View>
+
+      {/* Security */}
+      <SectionTitle label="Security" />
+      <View style={[styles.section, { shadowColor: colors.shadow }]}>
+        <ToggleRow
+          icon="lock" iconBg={colors.primaryLight} iconColor={colors.primary}
+          label={`${biometricType || "Biometric"} Lock`}
+          sub={
+            !biometricAvailable
+              ? "Not available on this device"
+              : biometricEnabled
+              ? `App locked with ${biometricType || "biometrics"}`
+              : "Require biometrics to open the app"
+          }
+          value={biometricEnabled}
+          onToggle={async () => {
+            if (!biometricAvailable && !biometricEnabled) return;
+            if (!biometricEnabled) {
+              const ok = await unlock();
+              if (ok) {
+                await setBiometricEnabled(true);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+            } else {
+              Alert.alert("Disable Lock", "Remove biometric protection?", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Remove", style: "destructive", onPress: () => setBiometricEnabled(false) },
+              ]);
+            }
+          }}
+          isLast
+        />
+      </View>
+
+      {/* Features */}
+      <SectionTitle label="Features" />
+      <View style={[styles.section, { shadowColor: colors.shadow }]}>
+        <ChevronRow
+          icon="repeat" iconBg={colors.tealTint} iconColor={colors.teal}
+          label="Recurring Expenses"
+          value={recurringExpenses.length > 0 ? `${recurringExpenses.filter(r => r.isActive).length} active` : "None set up"}
+          onPress={() => router.push("/recurring")}
+        />
+        <ChevronRow
+          icon="git-merge" iconBg={colors.accentTint} iconColor={colors.accent}
+          label="Simplify Debts"
+          value={simplifyDebtsEnabled ? "On" : "Off"}
+          onPress={toggleSimplifyDebts}
+          isLast
+        />
       </View>
 
       {/* Preferences */}
