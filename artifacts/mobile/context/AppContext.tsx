@@ -212,6 +212,7 @@ interface AppContextType {
   addExpenseComment: (expenseId: string, text: string) => void;
   toggleReaction: (expenseId: string, emoji: string) => void;
   addSettlement: (settlement: Omit<Settlement, "id" | "createdAt">) => void;
+  addSettlements: (settlements: Omit<Settlement, "id" | "createdAt">[]) => void;
   sendGroupInvite: (groupId: string, email: string, name?: string) => GroupInvitation | null;
   acceptInvitation: (invitationId: string) => void;
   declineInvitation: (invitationId: string) => void;
@@ -1042,34 +1043,43 @@ const defaultGroupMessages: GroupMessage[] = [
 ];
 
 function rawPairwiseDebts(groupExpenses: Expense[], groupSettlements: Settlement[], memberIds: string[]): DebtRelation[] {
-  const pairBalance: Record<string, Record<string, number>> = {};
+  // net[A][B] = amount A is owed by B (positive = A is creditor vs B)
+  const net: Record<string, Record<string, number>> = {};
+
+  function adjust(creditor: string, debtor: string, amount: number) {
+    if (!net[creditor]) net[creditor] = {};
+    if (!net[debtor]) net[debtor] = {};
+    net[creditor][debtor] = (net[creditor][debtor] ?? 0) + amount;
+    net[debtor][creditor] = (net[debtor][creditor] ?? 0) - amount;
+  }
 
   groupExpenses.forEach(expense => {
     const payer = expense.paidById;
     if (!memberIds.includes(payer)) return;
     expense.splits.forEach(split => {
-      if (split.memberId === payer) return;
-      if (!memberIds.includes(split.memberId)) return;
-      if (!pairBalance[payer]) pairBalance[payer] = {};
-      pairBalance[payer][split.memberId] = (pairBalance[payer][split.memberId] ?? 0) + split.amount;
+      if (split.memberId === payer || !memberIds.includes(split.memberId)) return;
+      adjust(payer, split.memberId, split.amount);
     });
   });
 
+  // A settlement where fromId pays toId reduces toId's credit against fromId
   groupSettlements.forEach(s => {
     if (!memberIds.includes(s.fromId) || !memberIds.includes(s.toId)) return;
-    if (pairBalance[s.toId] && pairBalance[s.toId][s.fromId] !== undefined) {
-      pairBalance[s.toId][s.fromId] -= s.amount;
-    }
+    adjust(s.toId, s.fromId, -s.amount);
   });
 
   const result: DebtRelation[] = [];
-  Object.keys(pairBalance).forEach(creditor => {
-    Object.keys(pairBalance[creditor]).forEach(debtor => {
-      const amount = pairBalance[creditor][debtor];
+  const seen = new Set<string>();
+  Object.keys(net).forEach(a => {
+    Object.keys(net[a]).forEach(b => {
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const amount = net[a][b]; // positive = a is owed by b
       if (amount > 0.005) {
-        result.push({ fromId: debtor, toId: creditor, amount: Math.round(amount * 100) / 100 });
+        result.push({ fromId: b, toId: a, amount: Math.round(amount * 100) / 100 });
       } else if (amount < -0.005) {
-        result.push({ fromId: creditor, toId: debtor, amount: Math.round(-amount * 100) / 100 });
+        result.push({ fromId: a, toId: b, amount: Math.round(-amount * 100) / 100 });
       }
     });
   });
@@ -1510,6 +1520,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
   );
 
+  const addSettlements = useCallback(
+    (newSettlements: Omit<Settlement, "id" | "createdAt">[]) => {
+      if (newSettlements.length === 0) return;
+      const now = new Date().toISOString();
+      const created: Settlement[] = newSettlements.map(s => ({
+        ...s,
+        id: genId(),
+        createdAt: now,
+      }));
+      const updated = [...created, ...settlements];
+      setSettlements(updated);
+      saveData(members, groups, expenses, updated, invitations);
+      if (notifPrefs.settlement) {
+        showToast(`${created.length} settlement${created.length > 1 ? "s" : ""} recorded ✓`, "success");
+      }
+    },
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+  );
+
   const sendGroupInvite = useCallback(
     (groupId: string, email: string, name?: string): GroupInvitation | null => {
       const group = groups.find(g => g.id === groupId);
@@ -1807,6 +1836,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addExpenseComment,
         toggleReaction,
         addSettlement,
+        addSettlements,
         sendGroupInvite,
         acceptInvitation,
         declineInvitation,

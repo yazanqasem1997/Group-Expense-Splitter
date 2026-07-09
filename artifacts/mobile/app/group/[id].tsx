@@ -36,7 +36,7 @@ export default function GroupDetailScreen() {
   const {
     getGroupById, getMemberById, getGroupExpenses, getGroupSettlements,
     getGroupBalances, getGroupPendingInvites, sendGroupInvite,
-    currentUser, deleteGroup, addSettlement, archiveGroup, unarchiveGroup,
+    currentUser, deleteGroup, addSettlement, addSettlements, archiveGroup, unarchiveGroup,
     addGroupMessage, getGroupMessages,
   } = useApp();
 
@@ -165,6 +165,33 @@ export default function GroupDetailScreen() {
         onPress: () => { deleteGroup(id); router.back(); },
       },
     ]);
+  }
+
+  function handleSettleAll() {
+    if (!group || debts.length === 0) return;
+    const total = debts.reduce((s, d) => s + d.amount, 0);
+    Alert.alert(
+      "Settle Up Group",
+      `Record ${debts.length} payment${debts.length > 1 ? "s" : ""} totalling ${formatAmount(total, group.currency)} to mark all balances as settled?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Settle All",
+          onPress: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            addSettlements(
+              debts.map(d => ({
+                groupId: id,
+                fromId: d.fromId,
+                toId: d.toId,
+                amount: d.amount,
+                currency: group.currency,
+              }))
+            );
+          },
+        },
+      ]
+    );
   }
 
   function openSettleModal(fromId: string, toId: string, amount: number) {
@@ -421,6 +448,14 @@ export default function GroupDetailScreen() {
             )}
           </View>
         </View>
+        {debts.length > 0 && (
+          <Pressable
+            style={[styles.settleAllBtn, { backgroundColor: colors.teal }]}
+            onPress={handleSettleAll}
+          >
+            <Text style={styles.settleAllBtnText}>Settle Up</Text>
+          </Pressable>
+        )}
         <Pressable onPress={handleGroupOptions}>
           <Feather name="more-horizontal" size={24} color={colors.text} />
         </Pressable>
@@ -705,6 +740,8 @@ const styles = StyleSheet.create({
     shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
   backBtn: { padding: 4 },
+  settleAllBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
+  settleAllBtnText: { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
   headerCenter: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   groupEmoji: { fontSize: 22 },
   groupName: { fontSize: 18, fontFamily: "Inter_700Bold" },
