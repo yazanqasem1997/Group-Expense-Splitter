@@ -254,7 +254,7 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
 export default function GroupsScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { groups, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById, getGroupBalances, convertCurrency, currentUser } = useApp();
+  const { groups, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById, getGroupBalances, convertCurrency, currentUser, unarchiveGroup } = useApp();
   const { youOwe, youAreOwed, currency: totalCurrency } = useMemo(() => getTotalOwed(), [getTotalOwed]);
 
   const [query, setQuery] = useState("");
@@ -264,6 +264,8 @@ export default function GroupsScreen() {
   const searchRef = useRef<TextInput>(null);
 
   const activeGroups = groups.filter(g => !g.isArchived);
+  const archivedGroups = groups.filter(g => g.isArchived);
+  const [showArchived, setShowArchived] = useState(false);
   const pendingInvites = getPendingInvitesForCurrentUser();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
@@ -474,6 +476,54 @@ export default function GroupsScreen() {
           )
         }
         renderItem={({ item }) => <GroupCard groupId={item.id} query={query} />}
+        ListFooterComponent={
+          archivedGroups.length > 0 && !isSearching ? (
+            <View style={styles.archivedSection}>
+              <Pressable
+                style={[styles.archivedPill, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowArchived(v => !v); }}
+              >
+                <Feather name="archive" size={13} color={colors.textSecondary} />
+                <Text style={[styles.archivedPillText, { color: colors.textSecondary }]}>
+                  {archivedGroups.length} archived {archivedGroups.length === 1 ? "group" : "groups"}
+                </Text>
+                <Feather name={showArchived ? "chevron-up" : "chevron-down"} size={13} color={colors.textTertiary} />
+              </Pressable>
+
+              {showArchived && archivedGroups.map(g => {
+                const members = g.memberIds.slice(0, 4).map(id => getMemberById(id)).filter(Boolean);
+                return (
+                  <Pressable
+                    key={g.id}
+                    style={[styles.archivedCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/group/[id]", params: { id: g.id } }); }}
+                  >
+                    <View style={[styles.archivedEmoji, { backgroundColor: colors.inputBg }]}>
+                      <Text style={{ fontSize: 22 }}>{g.emoji}</Text>
+                    </View>
+                    <View style={styles.archivedInfo}>
+                      <Text style={[styles.archivedName, { color: colors.textSecondary }]} numberOfLines={1}>{g.name}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: -3 }}>
+                        {members.map(m => m ? <Avatar key={m.id} name={m.name} color={m.avatarColor} size={16} style={{ marginRight: -4 }} /> : null)}
+                        <Text style={[styles.archivedMeta, { color: colors.textTertiary }]}>
+                          {"  "}{g.memberIds.length} {g.memberIds.length === 1 ? "person" : "people"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      style={[styles.unarchiveBtn, { backgroundColor: colors.primary + "14", borderColor: colors.primary + "30" }]}
+                      onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); unarchiveGroup(g.id); }}
+                      hitSlop={8}
+                    >
+                      <Feather name="rotate-ccw" size={12} color={colors.primary} />
+                      <Text style={[styles.unarchiveBtnText, { color: colors.primary }]}>Restore</Text>
+                    </Pressable>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null
+        }
       />
 
       <BalanceBreakdownModal visible={showBreakdown} onClose={() => setShowBreakdown(false)} />
@@ -663,6 +713,30 @@ const styles = StyleSheet.create({
   settledLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   balanceLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 2, textAlign: "right" },
   balanceAmount: { fontSize: 17, fontFamily: "Inter_700Bold", letterSpacing: -0.3, textAlign: "right" },
+
+  archivedSection: { marginTop: 6, marginBottom: 8 },
+  archivedPill: {
+    flexDirection: "row", alignItems: "center", gap: 7,
+    alignSelf: "flex-start", paddingHorizontal: 13, paddingVertical: 9,
+    borderRadius: 20, borderWidth: 1, marginBottom: 8,
+  },
+  archivedPillText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  archivedCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, opacity: 0.8,
+  },
+  archivedEmoji: {
+    width: 42, height: 42, borderRadius: 12,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  archivedInfo: { flex: 1 },
+  archivedName: { fontSize: 14, fontFamily: "Inter_500Medium", marginBottom: 3 },
+  archivedMeta: { fontSize: 11.5, fontFamily: "Inter_400Regular" },
+  unarchiveBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1,
+  },
+  unarchiveBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   heroTapHint: {
     flexDirection: "row", alignItems: "center", gap: 4,
     marginTop: 12, alignSelf: "flex-start",
