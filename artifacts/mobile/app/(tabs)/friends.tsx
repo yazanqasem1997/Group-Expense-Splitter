@@ -3,9 +3,9 @@ import * as Haptics from "expo-haptics";
 import React, { useMemo, useState } from "react";
 import {
   Alert,
-  FlatList,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -32,7 +32,8 @@ export default function FriendsScreen() {
   const [name, setName] = useState("");
   const [emailError, setEmailError] = useState("");
 
-  const friends = members.filter(m => !m.isCurrentUser);
+  const activeFriends = members.filter(m => !m.isCurrentUser && !m.isPending);
+  const pendingFriends = members.filter(m => !m.isCurrentUser && m.isPending);
 
   const friendBalances = useMemo(() => {
     const map: Record<string, number> = {};
@@ -53,48 +54,35 @@ export default function FriendsScreen() {
 
   function handleAddFriend() {
     const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setEmailError("Email is required");
-      return;
-    }
-    if (!EMAIL_RE.test(trimmedEmail)) {
-      setEmailError("Enter a valid email address");
-      return;
-    }
+    if (!trimmedEmail) { setEmailError("Email is required"); return; }
+    if (!EMAIL_RE.test(trimmedEmail)) { setEmailError("Enter a valid email address"); return; }
     const alreadyExists = members.some(m => m.email?.toLowerCase() === trimmedEmail.toLowerCase());
-    if (alreadyExists) {
-      setEmailError("This email is already in your friends list");
-      return;
-    }
+    if (alreadyExists) { setEmailError("This email is already in your friends list"); return; }
     const derivedName = name.trim() || trimmedEmail.split("@")[0];
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addMember({ name: derivedName, email: trimmedEmail, avatarColor: "", isPending: true });
-    setEmail("");
-    setName("");
-    setEmailError("");
-    setShowAdd(false);
+    setEmail(""); setName(""); setEmailError(""); setShowAdd(false);
   }
 
-  function renderFriend(member: Member) {
+  function handleResend(member: Member) {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(
+      "Invite resent",
+      `A new invitation has been sent to ${member.email ?? member.name}.`,
+      [{ text: "OK" }]
+    );
+  }
+
+  function renderActiveFriend(member: Member) {
     const balance = friendBalances[member.id] ?? 0;
     const isSettled = Math.abs(balance) < 0.01;
-
     return (
-      <View style={[styles.friendCard, { backgroundColor: colors.surface }]}>
+      <View key={member.id} style={[styles.friendCard, { backgroundColor: colors.surface }]}>
         <Avatar name={member.name} color={member.avatarColor} size={46} />
         <View style={styles.friendInfo}>
-          <View style={styles.friendNameRow}>
-            <Text style={[styles.friendName, { color: colors.text }]}>{member.name}</Text>
-            {member.isPending && (
-              <View style={[styles.pendingBadge, { backgroundColor: colors.accentTint }]}>
-                <Text style={[styles.pendingText, { color: colors.accent }]}>Invited</Text>
-              </View>
-            )}
-          </View>
+          <Text style={[styles.friendName, { color: colors.text }]}>{member.name}</Text>
           {member.email ? (
-            <Text style={[styles.friendEmail, { color: colors.textSecondary }]}>
-              {member.email}
-            </Text>
+            <Text style={[styles.friendEmail, { color: colors.textSecondary }]}>{member.email}</Text>
           ) : null}
         </View>
         <View style={styles.friendBalance}>
@@ -115,6 +103,34 @@ export default function FriendsScreen() {
     );
   }
 
+  function renderPendingFriend(member: Member) {
+    return (
+      <View key={member.id} style={[styles.pendingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.pendingLeft}>
+          <Avatar name={member.name} color={member.avatarColor} size={42} />
+          <View style={styles.pendingInfo}>
+            <View style={styles.pendingNameRow}>
+              <Text style={[styles.friendName, { color: colors.text }]}>{member.name}</Text>
+              <View style={[styles.pendingBadge, { backgroundColor: colors.accentTint }]}>
+                <Text style={[styles.pendingBadgeText, { color: colors.accent }]}>Pending</Text>
+              </View>
+            </View>
+            {member.email ? (
+              <Text style={[styles.friendEmail, { color: colors.textSecondary }]}>{member.email}</Text>
+            ) : null}
+          </View>
+        </View>
+        <Pressable
+          style={[styles.resendBtn, { borderColor: colors.border }]}
+          onPress={() => handleResend(member)}
+        >
+          <Feather name="send" size={13} color={colors.primary} />
+          <Text style={[styles.resendText, { color: colors.primary }]}>Resend</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: colors.headerBg }]}>
@@ -131,84 +147,105 @@ export default function FriendsScreen() {
         </Pressable>
       </View>
 
-      {showAdd && (
-        <KeyboardAwareScrollViewCompat
-          style={[styles.addForm, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          contentContainerStyle={{ gap: 10 }}
-          keyboardShouldPersistTaps="handled"
-          scrollEnabled={false}
-        >
-          <Text style={[styles.addFormTitle, { color: colors.text }]}>Invite a friend</Text>
-          <Text style={[styles.addFormSub, { color: colors.textSecondary }]}>
-            They'll appear in your friends list right away.
-          </Text>
-
-          <View>
-            <View style={[
-              styles.inputWrap,
-              { backgroundColor: colors.inputBg, borderColor: emailError ? colors.danger : colors.inputBorder },
-            ]}>
-              <Feather name="mail" size={16} color={emailError ? colors.danger : colors.textTertiary} style={styles.inputIcon} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Invite form */}
+        {showAdd && (
+          <KeyboardAwareScrollViewCompat
+            style={[styles.addForm, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            contentContainerStyle={{ gap: 10 }}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={false}
+          >
+            <Text style={[styles.addFormTitle, { color: colors.text }]}>Invite a friend</Text>
+            <Text style={[styles.addFormSub, { color: colors.textSecondary }]}>
+              They'll appear in your friends list right away.
+            </Text>
+            <View>
+              <View style={[
+                styles.inputWrap,
+                { backgroundColor: colors.inputBg, borderColor: emailError ? colors.danger : colors.inputBorder },
+              ]}>
+                <Feather name="mail" size={16} color={emailError ? colors.danger : colors.textTertiary} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  placeholder="Email address *"
+                  placeholderTextColor={colors.textTertiary}
+                  value={email}
+                  onChangeText={t => { setEmail(t); setEmailError(""); }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              {emailError ? (
+                <Text style={[styles.errorText, { color: colors.danger }]}>{emailError}</Text>
+              ) : null}
+            </View>
+            <View style={[styles.inputWrap, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+              <Feather name="user" size={16} color={colors.textTertiary} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, { color: colors.text }]}
-                placeholder="Email address *"
+                placeholder="Name (optional — defaults to email)"
                 placeholderTextColor={colors.textTertiary}
-                value={email}
-                onChangeText={t => { setEmail(t); setEmailError(""); }}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
               />
             </View>
-            {emailError ? (
-              <Text style={[styles.errorText, { color: colors.danger }]}>{emailError}</Text>
-            ) : null}
-          </View>
+            <View style={styles.formButtons}>
+              <Pressable
+                style={[styles.formBtn, styles.formBtnSecondary, { borderColor: colors.border }]}
+                onPress={() => { setShowAdd(false); setEmail(""); setName(""); setEmailError(""); }}
+              >
+                <Text style={[styles.formBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.formBtn, { backgroundColor: colors.primary }]}
+                onPress={handleAddFriend}
+              >
+                <Feather name="user-plus" size={15} color="#fff" />
+                <Text style={[styles.formBtnText, { color: "#fff" }]}>Send Invite</Text>
+              </Pressable>
+            </View>
+          </KeyboardAwareScrollViewCompat>
+        )}
 
-          <View style={[styles.inputWrap, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-            <Feather name="user" size={16} color={colors.textTertiary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, { color: colors.text }]}
-              placeholder="Name (optional — defaults to email)"
-              placeholderTextColor={colors.textTertiary}
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
+        {/* Active friends section */}
+        {activeFriends.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>
+              FRIENDS · {activeFriends.length}
+            </Text>
+            {activeFriends.map(renderActiveFriend)}
           </View>
+        )}
 
-          <View style={styles.formButtons}>
-            <Pressable
-              style={[styles.formBtn, styles.formBtnSecondary, { borderColor: colors.border }]}
-              onPress={() => { setShowAdd(false); setEmail(""); setName(""); setEmailError(""); }}
-            >
-              <Text style={[styles.formBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.formBtn, { backgroundColor: colors.primary }]}
-              onPress={handleAddFriend}
-            >
-              <Feather name="user-plus" size={15} color="#fff" />
-              <Text style={[styles.formBtnText, { color: "#fff" }]}>Send Invite</Text>
-            </Pressable>
+        {/* Pending invitations section */}
+        {pendingFriends.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>
+              PENDING INVITES · {pendingFriends.length}
+            </Text>
+            <Text style={[styles.sectionDesc, { color: colors.textTertiary }]}>
+              Waiting for them to accept. Tap Resend to follow up.
+            </Text>
+            {pendingFriends.map(renderPendingFriend)}
           </View>
-        </KeyboardAwareScrollViewCompat>
-      )}
+        )}
 
-      <FlatList
-        data={friends}
-        keyExtractor={item => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
-        ListEmptyComponent={
+        {/* Empty state */}
+        {activeFriends.length === 0 && pendingFriends.length === 0 && !showAdd && (
           <EmptyState
             icon="users"
             title="No friends yet"
             subtitle="Invite friends by email to start splitting expenses"
           />
-        }
-        renderItem={({ item }) => renderFriend(item)}
-        showsVerticalScrollIndicator={false}
-      />
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -235,12 +272,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  listContent: { padding: 16, gap: 0 },
   addForm: {
-    margin: 16,
+    marginBottom: 16,
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    maxHeight: 320,
   },
   addFormTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   addFormSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginBottom: 4 },
@@ -254,11 +291,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   inputIcon: {},
-  input: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-  },
+  input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
   errorText: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4, marginLeft: 4 },
   formButtons: { flexDirection: "row", gap: 10, marginTop: 4 },
   formBtn: {
@@ -272,13 +305,27 @@ const styles = StyleSheet.create({
   },
   formBtnSecondary: { borderWidth: 1, backgroundColor: "transparent" },
   formBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  listContent: { padding: 16, gap: 10 },
+  section: { marginBottom: 24 },
+  sectionHeader: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginLeft: 2,
+  },
+  sectionDesc: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 10,
+    marginLeft: 2,
+  },
   friendCard: {
     flexDirection: "row",
     alignItems: "center",
     padding: 14,
     borderRadius: 16,
     gap: 12,
+    marginBottom: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -286,17 +333,35 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   friendInfo: { flex: 1 },
-  friendNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   friendName: { fontSize: 16, fontFamily: "Inter_500Medium" },
-  pendingBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  pendingText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   friendEmail: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   friendBalance: { alignItems: "flex-end" },
   settledText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   balanceLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 2 },
   balanceAmount: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  pendingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 10,
+    marginBottom: 10,
+  },
+  pendingLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  pendingInfo: { flex: 1 },
+  pendingNameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  pendingBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  pendingBadgeText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  resendBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  resendText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 });
