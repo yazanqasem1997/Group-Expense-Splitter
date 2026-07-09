@@ -112,8 +112,15 @@ interface AppContextType {
   expenses: Expense[];
   settlements: Settlement[];
   invitations: GroupInvitation[];
+  defaultCurrency: Currency;
+  setDefaultCurrency: (c: Currency) => void;
+  exchangeRates: Record<string, number>;
+  ratesUpdated: string | null;
+  fetchExchangeRates: () => Promise<void>;
+  convertCurrency: (amount: number, from: Currency) => number;
   simplifyDebtsEnabled: boolean;
   toggleSimplifyDebts: () => void;
+  updateCurrentUser: (updates: Partial<Omit<Member, "id" | "isCurrentUser">>) => void;
   addMember: (member: Omit<Member, "id">) => Member;
   addGroup: (group: Omit<Group, "id" | "createdAt">) => Group;
   updateGroup: (id: string, updates: Partial<Group>) => void;
@@ -128,7 +135,7 @@ interface AppContextType {
   getPendingInvitesForCurrentUser: () => GroupInvitation[];
   getGroupPendingInvites: (groupId: string) => GroupInvitation[];
   getGroupBalances: (groupId: string) => DebtRelation[];
-  getTotalOwed: () => { youOwe: number; youAreOwed: number };
+  getTotalOwed: () => { youOwe: number; youAreOwed: number; currency: Currency };
   getMemberById: (id: string) => Member | undefined;
   getGroupById: (id: string) => Group | undefined;
   getGroupExpenses: (groupId: string) => Expense[];
@@ -345,7 +352,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const SIMPLIFY_KEY = "@spliteasy_simplify";
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser] = useState<Member>(defaultCurrentUser);
+  const [currentUser, setCurrentUser] = useState<Member>(defaultCurrentUser);
   const [members, setMembers] = useState<Member[]>(defaultMembers);
   const [groups, setGroups] = useState<Group[]>(defaultGroups);
   const [expenses, setExpenses] = useState<Expense[]>(defaultExpenses);
@@ -353,6 +360,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [invitations, setInvitations] = useState<GroupInvitation[]>(defaultInvitations);
   const [isLoading, setIsLoading] = useState(true);
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
+  const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
+  const [ratesUpdated, setRatesUpdated] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -363,7 +373,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
         const data = JSON.parse(stored);
-        if (data.members) setMembers(data.members);
+        if (data.members) {
+          setMembers(data.members);
+          const me = (data.members as Member[]).find(m => m.isCurrentUser);
+          if (me) setCurrentUser(me);
+        }
         if (data.groups) setGroups(data.groups);
         if (data.expenses) setExpenses(data.expenses);
         if (data.settlements) setSettlements(data.settlements);
@@ -371,11 +385,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       const simplifyStored = await AsyncStorage.getItem(SIMPLIFY_KEY);
       if (simplifyStored !== null) setSimplifyDebtsEnabled(simplifyStored === "true");
+      const currencyStored = await AsyncStorage.getItem("@spliteasy_defaultCurrency");
+      if (currencyStored) setDefaultCurrencyState(currencyStored as Currency);
+      const ratesStored = await AsyncStorage.getItem("@spliteasy_rates");
+      if (ratesStored) {
+        const { rates, updated } = JSON.parse(ratesStored);
+        setExchangeRates(rates);
+        setRatesUpdated(updated);
+      }
     } catch (e) {
     } finally {
       setIsLoading(false);
     }
   };
+
+  const fetchExchangeRates = useCallback(async () => {
+    try {
+      const resp = await fetch("https://api.frankfurter.app/latest?from=USD");
+      const data = await resp.json();
+      const rates: Record<string, number> = data.rates ?? {};
+      const updated = new Date().toISOString();
+      setExchangeRates(rates);
+      setRatesUpdated(updated);
+      await AsyncStorage.setItem("@spliteasy_rates", JSON.stringify({ rates, updated }));
+    } catch {}
+  }, []);
+
+  useEffect(() => { fetchExchangeRates(); }, []);
+
+  const convertCurrency = useCallback(
+    (amount: number, from: Currency): number => {
+      if (from === defaultCurrency) return amount;
+      if (Object.keys(exchangeRates).length === 0) return amount;
+      const inUSD = from === "USD" ? amount : amount / (exchangeRates[from] ?? 1);
+      return defaultCurrency === "USD" ? inUSD : inUSD * (exchangeRates[defaultCurrency] ?? 1);
+    },
+    [exchangeRates, defaultCurrency]
+  );
+
+  const setDefaultCurrency = useCallback(async (currency: Currency) => {
+    setDefaultCurrencyState(currency);
+    await AsyncStorage.setItem("@spliteasy_defaultCurrency", currency);
+  }, []);
 
   const toggleSimplifyDebts = useCallback(() => {
     setSimplifyDebtsEnabled(prev => {
@@ -407,6 +458,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {}
     },
     []
+  );
+
+  const updateCurrentUser = useCallback(
+    (updates: Partial<Omit<Member, "id" | "isCurrentUser">>) => {
+      const updated: Member = { ...currentUser, ...updates };
+      setCurrentUser(updated);
+      const updatedMembers = members.map(m => m.isCurrentUser ? updated : m);
+      setMembers(updatedMembers);
+      saveData(updatedMembers, groups, expenses, settlements, invitations);
+    },
+    [currentUser, members, groups, expenses, settlements, invitations, saveData]
   );
 
   const genId = () =>
@@ -644,13 +706,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     for (const group of groups.filter(g => !g.isArchived)) {
       const debts = getGroupBalances(group.id);
       for (const debt of debts) {
-        if (debt.fromId === CURRENT_USER_ID) youOwe += debt.amount;
-        if (debt.toId === CURRENT_USER_ID) youAreOwed += debt.amount;
+        const converted = convertCurrency(debt.amount, group.currency);
+        if (debt.fromId === CURRENT_USER_ID) youOwe += converted;
+        if (debt.toId === CURRENT_USER_ID) youAreOwed += converted;
       }
     }
 
-    return { youOwe, youAreOwed };
-  }, [groups, getGroupBalances]);
+    return { youOwe, youAreOwed, currency: defaultCurrency };
+  }, [groups, getGroupBalances, convertCurrency, defaultCurrency]);
 
   const getMemberById = useCallback(
     (id: string) => members.find(m => m.id === id),
@@ -681,6 +744,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider
       value={{
+        defaultCurrency,
+        setDefaultCurrency,
+        exchangeRates,
+        ratesUpdated,
+        fetchExchangeRates,
+        convertCurrency,
+        updateCurrentUser,
         currentUser,
         members,
         groups,
