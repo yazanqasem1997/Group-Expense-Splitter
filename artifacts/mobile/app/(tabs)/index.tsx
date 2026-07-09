@@ -5,8 +5,10 @@ import { router } from "expo-router";
 import React, { useMemo, useRef, useState } from "react";
 import {
   FlatList,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,6 +21,114 @@ import { EmptyState } from "@/components/EmptyState";
 import { GroupInvitation, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
+
+function BalanceBreakdownModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { colors } = useTheme();
+  const { groups, getGroupBalances, getMemberById, currentUser, convertCurrency, exchangeRates } = useApp();
+  const insets = useSafeAreaInsets();
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const ratesAvailable = Object.keys(exchangeRates).length > 0;
+
+  const breakdown = useMemo(() => {
+    return groups
+      .filter(g => !g.isArchived)
+      .map(g => {
+        const debts = getGroupBalances(g.id);
+        const creditRelations = debts.filter(d => d.toId === currentUser.id);
+        const debtRelations = debts.filter(d => d.fromId === currentUser.id);
+        const youAreOwed = creditRelations.reduce((s, d) => s + d.amount, 0);
+        const youOwe = debtRelations.reduce((s, d) => s + d.amount, 0);
+        const net = youAreOwed - youOwe;
+        return { group: g, net, youAreOwed, youOwe, debts };
+      })
+      .filter(r => Math.abs(r.net) > 0.005);
+  }, [groups, getGroupBalances, currentUser.id]);
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={bsStyles.backdrop} onPress={onClose} />
+      <View style={[bsStyles.sheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + 16 }]}>
+        <View style={[bsStyles.sheetHeader, { borderBottomColor: colors.border }]}>
+          <View style={[bsStyles.handle, { backgroundColor: colors.border }]} />
+          <Text style={[bsStyles.sheetTitle, { color: colors.text }]}>Balance Breakdown</Text>
+          {!ratesAvailable && (
+            <Text style={[bsStyles.ratesNote, { color: colors.textTertiary }]}>
+              ≈ Using 1:1 rates (no connection)
+            </Text>
+          )}
+          <Pressable style={bsStyles.closeBtn} onPress={onClose}>
+            <Feather name="x" size={18} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false} style={bsStyles.scroll}>
+          {breakdown.map(({ group, net, debts }) => {
+            const isExpanded = expandedGroupId === group.id;
+            const isPositive = net >= 0;
+            return (
+              <View key={group.id}>
+                <Pressable
+                  style={[bsStyles.groupRow, { borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setExpandedGroupId(isExpanded ? null : group.id);
+                  }}
+                >
+                  <View style={[bsStyles.groupEmojiWrap, { backgroundColor: (isPositive ? colors.positive : colors.negative) + "18" }]}>
+                    <Text style={bsStyles.groupEmoji}>{group.emoji}</Text>
+                  </View>
+                  <View style={bsStyles.groupInfo}>
+                    <Text style={[bsStyles.groupName, { color: colors.text }]} numberOfLines={1}>{group.name}</Text>
+                    <Text style={[bsStyles.groupSub, { color: colors.textSecondary }]}>
+                      {isPositive ? "Owed to you" : "You owe"} · {debts.filter(d => d.toId === currentUser.id || d.fromId === currentUser.id).length} {debts.length === 1 ? "person" : "people"}
+                    </Text>
+                  </View>
+                  <View style={bsStyles.groupRight}>
+                    <Text style={[bsStyles.groupAmount, { color: isPositive ? colors.positive : colors.negative }]}>
+                      {isPositive ? "+" : "-"}{formatAmount(Math.abs(net), group.currency)}
+                    </Text>
+                    <Feather name={isExpanded ? "chevron-up" : "chevron-down"} size={14} color={colors.textTertiary} style={{ marginTop: 3 }} />
+                  </View>
+                </Pressable>
+
+                {isExpanded && debts
+                  .filter(d => d.toId === currentUser.id || d.fromId === currentUser.id)
+                  .map((d, i) => {
+                    const isOwedToMe = d.toId === currentUser.id;
+                    const other = getMemberById(isOwedToMe ? d.fromId : d.toId);
+                    return (
+                      <Pressable
+                        key={i}
+                        style={[bsStyles.memberRow, { backgroundColor: colors.inputBg, borderBottomColor: colors.border }]}
+                        onPress={() => { onClose(); router.push({ pathname: "/group/[id]", params: { id: group.id } }); }}
+                      >
+                        <View style={[bsStyles.memberAvatar, { backgroundColor: other?.avatarColor ?? colors.border }]}>
+                          <Text style={bsStyles.memberInitial}>{(other?.name ?? "?")[0].toUpperCase()}</Text>
+                        </View>
+                        <Text style={[bsStyles.memberName, { color: colors.textSecondary }]}>
+                          {isOwedToMe ? (other?.name ?? "?") + " owes you" : "You owe " + (other?.name ?? "?")}
+                        </Text>
+                        <Text style={[bsStyles.memberAmount, { color: isOwedToMe ? colors.positive : colors.negative }]}>
+                          {formatAmount(d.amount, group.currency)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+              </View>
+            );
+          })}
+
+          {breakdown.length === 0 && (
+            <View style={bsStyles.emptyState}>
+              <Feather name="check-circle" size={32} color={colors.success} />
+              <Text style={[bsStyles.emptyText, { color: colors.textSecondary }]}>All settled up!</Text>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
 
 function InviteCard({ invite }: { invite: GroupInvitation }) {
   const { colors } = useTheme();
@@ -65,9 +175,9 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
   if (!group) return null;
 
   const debts = getGroupBalances(groupId);
-  const myDebt = debts.find(d => d.fromId === currentUser.id);
-  const myCredit = debts.find(d => d.toId === currentUser.id);
-  const netBalance = (myCredit?.amount ?? 0) - (myDebt?.amount ?? 0);
+  const totalCredit = debts.filter(d => d.toId === currentUser.id).reduce((s, d) => s + d.amount, 0);
+  const totalDebt = debts.filter(d => d.fromId === currentUser.id).reduce((s, d) => s + d.amount, 0);
+  const netBalance = totalCredit - totalDebt;
   const isSettled = Math.abs(netBalance) < 0.01;
   const accentColor = isSettled ? colors.border : netBalance > 0 ? colors.positive : colors.negative;
 
@@ -148,6 +258,7 @@ export default function GroupsScreen() {
   const { youOwe, youAreOwed, currency: totalCurrency } = useMemo(() => getTotalOwed(), [getTotalOwed]);
 
   const [query, setQuery] = useState("");
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const searchRef = useRef<TextInput>(null);
 
   const activeGroups = groups.filter(g => !g.isArchived);
@@ -249,40 +360,51 @@ export default function GroupsScreen() {
                     ? ["#2A0E0E", "#3D1515", "#3D1515"]
                     : [colors.danger, "#DC2626", "#991B1B"];
                 return (
-                  <LinearGradient
-                    colors={gradColors}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.heroCard}
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowBreakdown(true); }}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}
                   >
-                    {/* Decorative circles */}
-                    <View style={styles.heroCircle1} />
-                    <View style={styles.heroCircle2} />
+                    <LinearGradient
+                      colors={gradColors}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.heroCard}
+                    >
+                      {/* Decorative circles */}
+                      <View style={styles.heroCircle1} />
+                      <View style={styles.heroCircle2} />
 
-                    <View style={styles.heroDotRow}>
-                      <View style={styles.heroDot} />
-                      <Text style={styles.heroLabelWhite}>
-                        {youOwe > 0 && youAreOwed > 0 ? "Your net balance" : youAreOwed > 0 ? "You are owed" : "You owe"}
-                      </Text>
-                    </View>
-                    <Text style={styles.heroAmountWhite}>
-                      {formatAmount(Math.abs(netBalance), totalCurrency)}
-                    </Text>
-
-                    {/* Breakdown pills when both owed and owe */}
-                    {youOwe > 0 && youAreOwed > 0 && (
-                      <View style={styles.heroPillRow}>
-                        <View style={styles.heroPill}>
-                          <Feather name="arrow-down-left" size={11} color="rgba(255,255,255,0.9)" />
-                          <Text style={styles.heroPillText}>{formatAmount(youAreOwed, totalCurrency)}</Text>
-                        </View>
-                        <View style={styles.heroPill}>
-                          <Feather name="arrow-up-right" size={11} color="rgba(255,255,255,0.9)" />
-                          <Text style={styles.heroPillText}>{formatAmount(youOwe, totalCurrency)}</Text>
-                        </View>
+                      <View style={styles.heroDotRow}>
+                        <View style={styles.heroDot} />
+                        <Text style={styles.heroLabelWhite}>
+                          {youOwe > 0 && youAreOwed > 0 ? "Your net balance" : youAreOwed > 0 ? "You are owed" : "You owe"}
+                        </Text>
                       </View>
-                    )}
-                  </LinearGradient>
+                      <Text style={styles.heroAmountWhite}>
+                        {formatAmount(Math.abs(netBalance), totalCurrency)}
+                      </Text>
+
+                      {/* Breakdown pills when both owed and owe */}
+                      {youOwe > 0 && youAreOwed > 0 && (
+                        <View style={styles.heroPillRow}>
+                          <View style={styles.heroPill}>
+                            <Feather name="arrow-down-left" size={11} color="rgba(255,255,255,0.9)" />
+                            <Text style={styles.heroPillText}>{formatAmount(youAreOwed, totalCurrency)}</Text>
+                          </View>
+                          <View style={styles.heroPill}>
+                            <Feather name="arrow-up-right" size={11} color="rgba(255,255,255,0.9)" />
+                            <Text style={styles.heroPillText}>{formatAmount(youOwe, totalCurrency)}</Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Tap hint */}
+                      <View style={styles.heroTapHint}>
+                        <Text style={styles.heroTapHintText}>See breakdown</Text>
+                        <Feather name="chevron-right" size={12} color="rgba(255,255,255,0.7)" />
+                      </View>
+                    </LinearGradient>
+                  </Pressable>
                 );
               })()}
 
@@ -330,6 +452,8 @@ export default function GroupsScreen() {
         }
         renderItem={({ item }) => <GroupCard groupId={item.id} query={query} />}
       />
+
+      <BalanceBreakdownModal visible={showBreakdown} onClose={() => setShowBreakdown(false)} />
     </View>
   );
 }
@@ -482,4 +606,75 @@ const styles = StyleSheet.create({
   settledLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   balanceLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 2, textAlign: "right" },
   balanceAmount: { fontSize: 17, fontFamily: "Inter_700Bold", letterSpacing: -0.3, textAlign: "right" },
+  heroTapHint: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    marginTop: 12, alignSelf: "flex-start",
+  },
+  heroTapHintText: {
+    fontSize: 11.5, fontFamily: "Inter_500Medium",
+    color: "rgba(255,255,255,0.70)",
+  },
+});
+
+const bsStyles = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  sheet: {
+    position: "absolute", left: 0, right: 0, bottom: 0,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: "80%",
+    shadowColor: "#000", shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12, shadowRadius: 20, elevation: 20,
+  },
+  sheetHeader: {
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14,
+    borderBottomWidth: 1,
+    alignItems: "center",
+  },
+  handle: {
+    width: 36, height: 4, borderRadius: 2, marginBottom: 14,
+  },
+  sheetTitle: { fontSize: 17, fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
+  ratesNote: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 3 },
+  closeBtn: {
+    position: "absolute", right: 16, top: 16,
+    width: 30, height: 30, alignItems: "center", justifyContent: "center",
+  },
+  scroll: { maxHeight: "100%" },
+
+  groupRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  groupEmojiWrap: {
+    width: 44, height: 44, borderRadius: 13,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  groupEmoji: { fontSize: 22 },
+  groupInfo: { flex: 1 },
+  groupName: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  groupSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  groupRight: { alignItems: "flex-end", gap: 3 },
+  groupAmount: { fontSize: 16, fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
+
+  memberRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 24, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  memberAvatar: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  memberInitial: { fontSize: 12, fontFamily: "Inter_700Bold", color: "#fff" },
+  memberName: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
+  memberAmount: { fontSize: 14, fontFamily: "Inter_600SemiBold", letterSpacing: -0.2 },
+
+  emptyState: {
+    alignItems: "center", justifyContent: "center",
+    gap: 12, paddingVertical: 40,
+  },
+  emptyText: { fontSize: 15, fontFamily: "Inter_500Medium" },
 });
