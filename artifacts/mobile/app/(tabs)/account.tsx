@@ -1,7 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -20,10 +19,6 @@ import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
 import { Currency, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 
-const NOTIF_KEY = "@spliteasy_notifs";
-
-type NotifPrefs = { expenseAdded: boolean; settlement: boolean; invite: boolean };
-const DEFAULT_NOTIFS: NotifPrefs = { expenseAdded: true, settlement: true, invite: true };
 
 const CURRENCIES: { code: Currency; label: string; flag: string }[] = [
   { code: "USD", label: "US Dollar",          flag: "🇺🇸" },
@@ -112,6 +107,7 @@ export default function AccountScreen() {
     simplifyDebtsEnabled, toggleSimplifyDebts,
     defaultCurrency, setDefaultCurrency,
     exchangeRates, ratesUpdated, fetchExchangeRates,
+    notifPrefs, updateNotifPref,
   } = useApp();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -120,28 +116,12 @@ export default function AccountScreen() {
     s => s.fromId === currentUser.id || s.toId === currentUser.id
   ).length;
 
-  const [notifs, setNotifs] = useState<NotifPrefs>(DEFAULT_NOTIFS);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [refreshingRates, setRefreshingRates] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
   const nameInputRef = useRef<TextInput>(null);
 
-  useEffect(() => {
-    AsyncStorage.getItem(NOTIF_KEY).then(stored => {
-      if (stored) { try { setNotifs({ ...DEFAULT_NOTIFS, ...JSON.parse(stored) }); } catch {} }
-    });
-  }, []);
-
-  const saveNotifs = useCallback((next: NotifPrefs) => {
-    setNotifs(next);
-    AsyncStorage.setItem(NOTIF_KEY, JSON.stringify(next));
-  }, []);
-
-  const toggleNotif = useCallback(
-    (key: keyof NotifPrefs) => saveNotifs({ ...notifs, [key]: !notifs[key] }),
-    [notifs, saveNotifs]
-  );
 
   const handleRefreshRates = useCallback(async () => {
     setRefreshingRates(true);
@@ -268,17 +248,17 @@ export default function AccountScreen() {
         <ToggleRow
           icon="dollar-sign" iconBg={colors.primaryLight} iconColor={colors.primary}
           label="Expense alerts" sub="When someone adds an expense to your group"
-          value={notifs.expenseAdded} onToggle={() => toggleNotif("expenseAdded")}
+          value={notifPrefs.expenseAdded} onToggle={() => updateNotifPref("expenseAdded", !notifPrefs.expenseAdded)}
         />
         <ToggleRow
           icon="check-circle" iconBg={colors.tealTint} iconColor={colors.teal}
           label="Settlement alerts" sub="When a debt is paid or settled"
-          value={notifs.settlement} onToggle={() => toggleNotif("settlement")}
+          value={notifPrefs.settlement} onToggle={() => updateNotifPref("settlement", !notifPrefs.settlement)}
         />
         <ToggleRow
           icon="users" iconBg={colors.accentTint} iconColor={colors.accent}
           label="Group invites" sub="When someone invites you to a group"
-          value={notifs.invite} onToggle={() => toggleNotif("invite")} isLast
+          value={notifPrefs.invite} onToggle={() => updateNotifPref("invite", !notifPrefs.invite)} isLast
         />
       </View>
 

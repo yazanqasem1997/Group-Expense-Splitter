@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 
 export type Currency = "USD" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR" | "AED";
 
@@ -42,8 +43,9 @@ export interface Expense {
   splitType: SplitType;
   splits: SplitDetail[];
   createdAt: string;
-  category: ExpenseCategory;
+  category: string;
   notes?: string;
+  addedBy?: string;
 }
 
 export type ExpenseCategory =
@@ -55,6 +57,8 @@ export type ExpenseCategory =
   | "shopping"
   | "health"
   | "other";
+
+export type NotifPrefs = { expenseAdded: boolean; settlement: boolean; invite: boolean };
 
 export interface Settlement {
   id: string;
@@ -122,6 +126,10 @@ interface AppContextType {
   convertAmount: (amount: number, from: Currency, to: Currency) => number;
   simplifyDebtsEnabled: boolean;
   toggleSimplifyDebts: () => void;
+  customCategories: string[];
+  addCustomCategory: (name: string) => void;
+  notifPrefs: NotifPrefs;
+  updateNotifPref: (key: keyof NotifPrefs, value: boolean) => void;
   updateCurrentUser: (updates: Partial<Omit<Member, "id" | "isCurrentUser">>) => void;
   addMember: (member: Omit<Member, "id">) => Member;
   addGroup: (group: Omit<Group, "id" | "createdAt">) => Group;
@@ -352,8 +360,12 @@ function simplifyDebts(netBalances: Record<string, number>): DebtRelation[] {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const SIMPLIFY_KEY = "@spliteasy_simplify";
+const CUSTOM_CATS_KEY = "@spliteasy_custom_cats";
+const NOTIF_KEY = "@spliteasy_notifs";
+const DEFAULT_NOTIF_PREFS: NotifPrefs = { expenseAdded: true, settlement: true, invite: true };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const { showToast } = useToast();
   const [currentUser, setCurrentUser] = useState<Member>(defaultCurrentUser);
   const [members, setMembers] = useState<Member[]>(defaultMembers);
   const [groups, setGroups] = useState<Group[]>(defaultGroups);
@@ -365,6 +377,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
   const [ratesUpdated, setRatesUpdated] = useState<string | null>(null);
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(DEFAULT_NOTIF_PREFS);
 
   useEffect(() => {
     loadData();
@@ -398,6 +412,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (ageMs > 24 * 60 * 60 * 1000) fetchExchangeRates();
       } else {
         fetchExchangeRates();
+      }
+      const customCatsStored = await AsyncStorage.getItem(CUSTOM_CATS_KEY);
+      if (customCatsStored) setCustomCategories(JSON.parse(customCatsStored));
+      const notifStored = await AsyncStorage.getItem(NOTIF_KEY);
+      if (notifStored) {
+        try { setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...JSON.parse(notifStored) }); } catch {}
       }
     } catch (e) {
     } finally {
@@ -543,36 +563,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [members, groups, expenses, settlements, invitations, saveData]
   );
 
+  const addCustomCategory = useCallback((name: string) => {
+    const trimmed = name.trim().toLowerCase();
+    if (!trimmed) return;
+    setCustomCategories(prev => {
+      if (prev.includes(trimmed)) return prev;
+      const next = [...prev, trimmed];
+      AsyncStorage.setItem(CUSTOM_CATS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const updateNotifPref = useCallback((key: keyof NotifPrefs, value: boolean) => {
+    setNotifPrefs(prev => {
+      const next = { ...prev, [key]: value };
+      AsyncStorage.setItem(NOTIF_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const addExpense = useCallback(
     (expense: Omit<Expense, "id" | "createdAt">) => {
       const newExpense: Expense = {
         ...expense,
         id: genId(),
         createdAt: new Date().toISOString(),
+        addedBy: expense.addedBy ?? currentUser.id,
       };
       const updated = [newExpense, ...expenses];
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
+      if (notifPrefs.expenseAdded) {
+        showToast(`"${expense.description}" added to group`, "success");
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id]
   );
 
   const updateExpense = useCallback(
     (id: string, updates: Partial<Expense>) => {
+      const prev = expenses.find(e => e.id === id);
       const updated = expenses.map(e => (e.id === id ? { ...e, ...updates } : e));
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
+      if (notifPrefs.expenseAdded && prev) {
+        showToast(`"${prev.description}" was updated`, "info");
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
   );
 
   const deleteExpense = useCallback(
     (id: string) => {
+      const target = expenses.find(e => e.id === id);
       const updated = expenses.filter(e => e.id !== id);
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
+      if (notifPrefs.expenseAdded && target) {
+        showToast(`"${target.description}" deleted`, "warning");
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
   );
 
   const addSettlement = useCallback(
@@ -585,8 +636,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = [newSettlement, ...settlements];
       setSettlements(updated);
       saveData(members, groups, expenses, updated, invitations);
+      if (notifPrefs.settlement) {
+        showToast("Settlement recorded ✓", "success");
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
   );
 
   const sendGroupInvite = useCallback(
@@ -774,6 +828,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         invitations,
         simplifyDebtsEnabled,
         toggleSimplifyDebts,
+        customCategories,
+        addCustomCategory,
+        notifPrefs,
+        updateNotifPref,
         addMember,
         addGroup,
         updateGroup,

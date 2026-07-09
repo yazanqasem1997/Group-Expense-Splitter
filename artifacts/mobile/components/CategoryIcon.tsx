@@ -1,9 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { ExpenseCategory } from "@/context/AppContext";
 
-const CATEGORY_CONFIG: Record<ExpenseCategory, { icon: string; color: string; bg: string }> = {
+export type CategoryConfig = { icon: string; color: string; bg: string };
+
+export const BUILTIN_CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   food: { icon: "coffee", color: "#F97316", bg: "#FFF3E8" },
   transport: { icon: "navigation", color: "#3B82F6", bg: "#EBF3FF" },
   accommodation: { icon: "home", color: "#8B5CF6", bg: "#F3F0FF" },
@@ -15,12 +16,12 @@ const CATEGORY_CONFIG: Record<ExpenseCategory, { icon: string; color: string; bg
 };
 
 interface CategoryIconProps {
-  category: ExpenseCategory;
+  category: string;
   size?: number;
 }
 
 export function CategoryIcon({ category, size = 36 }: CategoryIconProps) {
-  const config = CATEGORY_CONFIG[category] ?? CATEGORY_CONFIG.other;
+  const config = BUILTIN_CATEGORY_CONFIG[category] ?? BUILTIN_CATEGORY_CONFIG.other;
   return (
     <View
       style={[
@@ -33,8 +34,8 @@ export function CategoryIcon({ category, size = 36 }: CategoryIconProps) {
   );
 }
 
-export function getCategoryConfig(category: ExpenseCategory) {
-  return CATEGORY_CONFIG[category] ?? CATEGORY_CONFIG.other;
+export function getCategoryConfig(category: string): CategoryConfig {
+  return BUILTIN_CATEGORY_CONFIG[category] ?? BUILTIN_CATEGORY_CONFIG.other;
 }
 
 const styles = StyleSheet.create({
