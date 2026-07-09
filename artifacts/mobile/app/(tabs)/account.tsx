@@ -697,7 +697,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   notifCatRow: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14,
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12,
   },
   notifSubGroup: {
     borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
