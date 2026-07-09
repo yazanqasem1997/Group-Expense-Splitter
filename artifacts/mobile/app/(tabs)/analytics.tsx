@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -32,7 +33,16 @@ export default function AnalyticsScreen() {
   const {
     expenses, groups, currentUser,
     defaultCurrency, convertAmount, exchangeRates, getMemberById,
+    checkAndAddRecurring, fetchExchangeRates,
   } = useApp();
+
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    checkAndAddRecurring();
+    await fetchExchangeRates().catch(() => {});
+    setRefreshing(false);
+  }, [checkAndAddRecurring, fetchExchangeRates]);
 
   const [period, setPeriod] = useState<Period>("1M");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
@@ -221,6 +231,14 @@ export default function AnalyticsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         {/* Group filter */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>

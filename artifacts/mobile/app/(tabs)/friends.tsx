@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,7 +26,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function FriendsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { members, currentUser, getGroupBalances, groups, addMember } = useApp();
+  const { members, currentUser, getGroupBalances, groups, addMember, checkAndAddRecurring, fetchExchangeRates } = useApp();
+
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    checkAndAddRecurring();
+    await fetchExchangeRates().catch(() => {});
+    setRefreshing(false);
+  }, [checkAndAddRecurring, fetchExchangeRates]);
 
   const [showAdd, setShowAdd] = useState(false);
   const [email, setEmail] = useState("");
@@ -151,6 +160,14 @@ export default function FriendsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         {/* Invite form */}
         {showAdd && (

@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -34,7 +35,15 @@ const TYPE_FILTERS: { value: TypeFilter; label: string; icon: string }[] = [
 export default function ActivityScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { expenses, settlements, getMemberById, getGroupById, currentUser } = useApp();
+  const { expenses, settlements, getMemberById, getGroupById, currentUser, checkAndAddRecurring, fetchExchangeRates } = useApp();
+
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    checkAndAddRecurring();
+    await fetchExchangeRates().catch(() => {});
+    setRefreshing(false);
+  }, [checkAndAddRecurring, fetchExchangeRates]);
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -267,6 +276,14 @@ export default function ActivityScreen() {
         }
         contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ListEmptyComponent={
           isSearching || typeFilter !== "all" ? (
             <View style={styles.noResults}>
