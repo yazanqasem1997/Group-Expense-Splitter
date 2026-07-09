@@ -254,11 +254,13 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
 export default function GroupsScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { groups, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById } = useApp();
+  const { groups, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById, getGroupBalances, convertCurrency, currentUser } = useApp();
   const { youOwe, youAreOwed, currency: totalCurrency } = useMemo(() => getTotalOwed(), [getTotalOwed]);
 
   const [query, setQuery] = useState("");
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showSort, setShowSort] = useState(false);
+  const [sortBy, setSortBy] = useState<"balance" | "name" | "recent">("balance");
   const searchRef = useRef<TextInput>(null);
 
   const activeGroups = groups.filter(g => !g.isArchived);
@@ -270,16 +272,31 @@ export default function GroupsScreen() {
   const isSearching = query.trim().length > 0;
 
   const filteredGroups = useMemo(() => {
-    if (!isSearching) return activeGroups;
-    const q = query.toLowerCase().trim();
-    return activeGroups.filter(g => {
-      if (g.name.toLowerCase().includes(q)) return true;
-      return g.memberIds.some(id => {
-        const m = getMemberById(id);
-        return m?.name.toLowerCase().includes(q);
+    let list = isSearching
+      ? activeGroups.filter(g => {
+          const q = query.toLowerCase().trim();
+          if (g.name.toLowerCase().includes(q)) return true;
+          return g.memberIds.some(id => getMemberById(id)?.name.toLowerCase().includes(q));
+        })
+      : [...activeGroups];
+
+    if (sortBy === "name") {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortBy === "recent") {
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else {
+      list.sort((a, b) => {
+        const netFor = (g: typeof a) => {
+          const d = getGroupBalances(g.id);
+          const credit = d.filter(r => r.toId === currentUser.id).reduce((s, r) => s + convertCurrency(r.amount, g.currency), 0);
+          const debt = d.filter(r => r.fromId === currentUser.id).reduce((s, r) => s + convertCurrency(r.amount, g.currency), 0);
+          return credit - debt;
+        };
+        return Math.abs(netFor(b)) - Math.abs(netFor(a));
       });
-    });
-  }, [activeGroups, query, isSearching, getMemberById]);
+    }
+    return list;
+  }, [activeGroups, query, isSearching, getMemberById, sortBy, getGroupBalances, convertCurrency, currentUser.id]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -431,8 +448,14 @@ export default function GroupsScreen() {
                   <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
                     {activeGroups.length} {activeGroups.length === 1 ? "group" : "groups"}
                   </Text>
-                  <Pressable onPress={() => {}}>
-                    <Text style={[styles.sectionSort, { color: colors.primary }]}>Sort</Text>
+                  <Pressable
+                    style={[styles.sectionSortBtn, { backgroundColor: colors.primary + "14" }]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowSort(true); }}
+                  >
+                    <Feather name="sliders" size={11} color={colors.primary} />
+                    <Text style={[styles.sectionSort, { color: colors.primary }]}>
+                      {sortBy === "balance" ? "Balance" : sortBy === "name" ? "Name" : "Recent"}
+                    </Text>
                   </Pressable>
                 </View>
               )}
@@ -454,6 +477,36 @@ export default function GroupsScreen() {
       />
 
       <BalanceBreakdownModal visible={showBreakdown} onClose={() => setShowBreakdown(false)} />
+
+      {/* Sort picker */}
+      <Modal visible={showSort} animationType="fade" transparent onRequestClose={() => setShowSort(false)}>
+        <Pressable style={bsStyles.backdrop} onPress={() => setShowSort(false)} />
+        <View style={[sortStyles.sheet, { backgroundColor: colors.surface }]}>
+          <Text style={[sortStyles.title, { color: colors.textSecondary }]}>SORT GROUPS BY</Text>
+          {(["balance", "name", "recent"] as const).map(opt => {
+            const label = opt === "balance" ? "Highest balance" : opt === "name" ? "Name (A–Z)" : "Most recent";
+            const icon = opt === "balance" ? "trending-up" : opt === "name" ? "type" : "clock";
+            const active = sortBy === opt;
+            return (
+              <Pressable
+                key={opt}
+                style={[sortStyles.option, active && { backgroundColor: colors.primary + "10" }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSortBy(opt);
+                  setShowSort(false);
+                }}
+              >
+                <View style={[sortStyles.optionIcon, { backgroundColor: active ? colors.primary + "18" : colors.inputBg }]}>
+                  <Feather name={icon as "trending-up"} size={15} color={active ? colors.primary : colors.textSecondary} />
+                </View>
+                <Text style={[sortStyles.optionLabel, { color: active ? colors.primary : colors.text }]}>{label}</Text>
+                {active && <Feather name="check" size={16} color={colors.primary} />}
+              </Pressable>
+            );
+          })}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -580,7 +633,11 @@ const styles = StyleSheet.create({
     marginBottom: 10, marginTop: 2, paddingHorizontal: 2,
   },
   sectionLabel: { fontSize: 11.5, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 1 },
-  sectionSort: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  sectionSortBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+  },
+  sectionSort: { fontSize: 12.5, fontFamily: "Inter_600SemiBold" },
 
   groupCard: {
     flexDirection: "row", borderRadius: 18, marginBottom: 10, overflow: "hidden",
@@ -677,4 +734,28 @@ const bsStyles = StyleSheet.create({
     gap: 12, paddingVertical: 40,
   },
   emptyText: { fontSize: 15, fontFamily: "Inter_500Medium" },
+});
+
+const sortStyles = StyleSheet.create({
+  sheet: {
+    position: "absolute", left: 20, right: 20,
+    top: "50%", marginTop: -100,
+    borderRadius: 20,
+    paddingVertical: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 24, elevation: 24,
+  },
+  title: {
+    fontSize: 10.5, fontFamily: "Inter_700Bold", letterSpacing: 1,
+    paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8,
+  },
+  option: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 14, paddingVertical: 13, borderRadius: 12, marginHorizontal: 6,
+  },
+  optionIcon: {
+    width: 34, height: 34, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+  },
+  optionLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
 });
