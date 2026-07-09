@@ -227,7 +227,7 @@ interface AppContextType {
 }
 
 export const CURRENT_USER_ID_EXPORT = "user_current";
-const STORAGE_KEY = "spliteasy_data_v2";
+const STORAGE_KEY = "spliteasy_data_v3";
 const MESSAGES_KEY = "@spliteasy_messages";
 const RECURRING_KEY = "@spliteasy_recurring";
 
@@ -250,6 +250,9 @@ const defaultMembers: Member[] = [
   { id: "user_2", name: "Alex Chen", email: "alex@example.com", avatarColor: "#7C3AED" },
   { id: "user_3", name: "Sam Rivera", email: "sam@example.com", avatarColor: "#0EA5E9" },
   { id: "user_4", name: "Jordan Lee", email: "jordan@example.com", avatarColor: "#F59E0B" },
+  { id: "user_5", name: "Emma Wilson", email: "emma@example.com", avatarColor: "#EC4899" },
+  { id: "user_6", name: "Marcus Taylor", email: "marcus@example.com", avatarColor: "#10B981" },
+  { id: "user_7", name: "Priya Sharma", email: "priya@example.com", avatarColor: "#8B5CF6" },
 ];
 
 const defaultGroups: Group[] = [
@@ -271,9 +274,83 @@ const defaultGroups: Group[] = [
     createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     type: "home",
   },
+  {
+    id: "group_3",
+    name: "Tokyo Vacation",
+    emoji: "🗾",
+    memberIds: ["user_current", "user_2", "user_4", "user_5"],
+    currency: "USD",
+    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "trip",
+  },
+  {
+    id: "group_4",
+    name: "Ski Weekend",
+    emoji: "⛷️",
+    memberIds: ["user_current", "user_5", "user_6"],
+    currency: "USD",
+    createdAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "trip",
+  },
+  {
+    id: "group_5",
+    name: "Office Lunch Club",
+    emoji: "🍱",
+    memberIds: ["user_current", "user_3", "user_6", "user_7"],
+    currency: "USD",
+    createdAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "other",
+  },
+  {
+    id: "group_6",
+    name: "Road Trip",
+    emoji: "🚗",
+    memberIds: ["user_current", "user_2", "user_3", "user_4", "user_5"],
+    currency: "USD",
+    createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "trip",
+  },
+  {
+    id: "group_7",
+    name: "Book Club",
+    emoji: "📚",
+    memberIds: ["user_current", "user_6", "user_7"],
+    currency: "USD",
+    createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "other",
+  },
+  {
+    id: "group_8",
+    name: "Music Festival",
+    emoji: "🎸",
+    memberIds: ["user_current", "user_2", "user_5", "user_7"],
+    currency: "EUR",
+    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "trip",
+  },
+  {
+    id: "group_9",
+    name: "Gym Squad",
+    emoji: "💪",
+    memberIds: ["user_current", "user_3", "user_4"],
+    currency: "USD",
+    createdAt: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "other",
+  },
+  {
+    id: "group_10",
+    name: "Birthday Dinner",
+    emoji: "🎂",
+    memberIds: ["user_current", "user_2", "user_3", "user_4", "user_5", "user_6"],
+    currency: "USD",
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    type: "other",
+  },
 ];
 
 const defaultExpenses: Expense[] = [
+  // ── Group 1: Barcelona Trip (EUR) ──────────────────────────────────────
+  // You paid €450 hotel → Alex & Sam each owe you €150
   {
     id: "exp_1",
     groupId: "group_1",
@@ -294,6 +371,7 @@ const defaultExpenses: Expense[] = [
       { id: "c1", memberId: "user_2", text: "Great find! Love the location.", createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString() },
     ],
   },
+  // Alex paid €60 transfer → you owe Alex €20
   {
     id: "exp_2",
     groupId: "group_1",
@@ -310,6 +388,28 @@ const defaultExpenses: Expense[] = [
     createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
     category: "transport",
   },
+  // Sam paid €90 tapas → you owe Sam €30
+  {
+    id: "exp_2b",
+    groupId: "group_1",
+    description: "Tapas Dinner",
+    amount: 90,
+    currency: "EUR",
+    paidById: "user_3",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 30 },
+      { memberId: "user_2", amount: 30 },
+      { memberId: "user_3", amount: 30, paid: 90 },
+    ],
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+    reactions: { "🍷": ["user_2", "user_current"] },
+  },
+  // Net group_1: owed €150×2 = €300, owe €20+€30 = €50 → net +€250 owed to you
+
+  // ── Group 2: The Apartment (USD) ───────────────────────────────────────
+  // You paid $2400 rent → Sam & Jordan each owe you $800
   {
     id: "exp_3",
     groupId: "group_2",
@@ -326,6 +426,7 @@ const defaultExpenses: Expense[] = [
     createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     category: "utilities",
   },
+  // Jordan paid $127.50 groceries → you & Sam each owe Jordan $42.50
   {
     id: "exp_4",
     groupId: "group_2",
@@ -342,6 +443,559 @@ const defaultExpenses: Expense[] = [
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     category: "food",
   },
+  // Sam paid $90 electricity → you & Jordan each owe Sam $30
+  {
+    id: "exp_4b",
+    groupId: "group_2",
+    description: "Electricity Bill",
+    amount: 90,
+    currency: "USD",
+    paidById: "user_3",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 30 },
+      { memberId: "user_3", amount: 30, paid: 90 },
+      { memberId: "user_4", amount: 30 },
+    ],
+    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "utilities",
+  },
+  // Net group_2: owed $800+$800=$1600, owe $42.50+$30=$72.50 → net +$1527.50 owed to you
+
+  // ── Group 3: Tokyo Vacation (USD) ──────────────────────────────────────
+  // Alex paid $1600 flights → you owe Alex $400
+  {
+    id: "exp_5",
+    groupId: "group_3",
+    description: "Round-trip Flights",
+    amount: 1600,
+    currency: "USD",
+    paidById: "user_2",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 400 },
+      { memberId: "user_2", amount: 400, paid: 1600 },
+      { memberId: "user_4", amount: 400 },
+      { memberId: "user_5", amount: 400 },
+    ],
+    createdAt: new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "transport",
+    reactions: { "🙏": ["user_current", "user_4", "user_5"] },
+  },
+  // You paid $1200 hotel → Alex, Jordan, Emma each owe you $300
+  {
+    id: "exp_6",
+    groupId: "group_3",
+    description: "Hotel (4 nights)",
+    amount: 1200,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 300, paid: 1200 },
+      { memberId: "user_2", amount: 300 },
+      { memberId: "user_4", amount: 300 },
+      { memberId: "user_5", amount: 300 },
+    ],
+    createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "accommodation",
+  },
+  // Jordan paid $240 bullet train → you owe Jordan $60
+  {
+    id: "exp_7",
+    groupId: "group_3",
+    description: "Bullet Train Pass",
+    amount: 240,
+    currency: "USD",
+    paidById: "user_4",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 60 },
+      { memberId: "user_2", amount: 60 },
+      { memberId: "user_4", amount: 60, paid: 240 },
+      { memberId: "user_5", amount: 60 },
+    ],
+    createdAt: new Date(Date.now() - 11 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "transport",
+  },
+  // Emma paid $360 dinner cruise → you owe Emma $90
+  {
+    id: "exp_8",
+    groupId: "group_3",
+    description: "Tokyo Dinner Cruise",
+    amount: 360,
+    currency: "USD",
+    paidById: "user_5",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 90 },
+      { memberId: "user_2", amount: 90 },
+      { memberId: "user_4", amount: 90 },
+      { memberId: "user_5", amount: 90, paid: 360 },
+    ],
+    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Net group_3: owed $300×3=$900, owe $400+$60+$90=$550 → net +$350 owed to you
+
+  // ── Group 4: Ski Weekend (USD) — you owe ──────────────────────────────
+  // Emma paid $720 cabin → you & Marcus each owe Emma $240
+  {
+    id: "exp_9",
+    groupId: "group_4",
+    description: "Cabin Rental",
+    amount: 720,
+    currency: "USD",
+    paidById: "user_5",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 240 },
+      { memberId: "user_5", amount: 240, paid: 720 },
+      { memberId: "user_6", amount: 240 },
+    ],
+    createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "accommodation",
+    reactions: { "🏔️": ["user_current", "user_6"] },
+  },
+  // Marcus paid $450 ski passes → you & Emma each owe Marcus $150
+  {
+    id: "exp_10",
+    groupId: "group_4",
+    description: "Ski Passes (2 days)",
+    amount: 450,
+    currency: "USD",
+    paidById: "user_6",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 150 },
+      { memberId: "user_5", amount: 150 },
+      { memberId: "user_6", amount: 150, paid: 450 },
+    ],
+    createdAt: new Date(Date.now() - 19 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "entertainment",
+  },
+  // You paid $180 groceries → Emma & Marcus each owe you $60
+  {
+    id: "exp_10b",
+    groupId: "group_4",
+    description: "Groceries & Meals",
+    amount: 180,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 60, paid: 180 },
+      { memberId: "user_5", amount: 60 },
+      { memberId: "user_6", amount: 60 },
+    ],
+    createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Net group_4: owed $60×2=$120, owe $240+$150=$390 → net -$270 (you owe $270)
+
+  // ── Group 5: Office Lunch Club (USD) ──────────────────────────────────
+  // You paid $80 → Sam, Marcus, Priya each owe you $20
+  {
+    id: "exp_11",
+    groupId: "group_5",
+    description: "Monday Lunch",
+    amount: 80,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 20, paid: 80 },
+      { memberId: "user_3", amount: 20 },
+      { memberId: "user_6", amount: 20 },
+      { memberId: "user_7", amount: 20 },
+    ],
+    createdAt: new Date(Date.now() - 44 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Sam paid $100 → you owe Sam $25
+  {
+    id: "exp_12",
+    groupId: "group_5",
+    description: "Wednesday Lunch",
+    amount: 100,
+    currency: "USD",
+    paidById: "user_3",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 25 },
+      { memberId: "user_3", amount: 25, paid: 100 },
+      { memberId: "user_6", amount: 25 },
+      { memberId: "user_7", amount: 25 },
+    ],
+    createdAt: new Date(Date.now() - 43 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Marcus paid $88 → you owe Marcus $22
+  {
+    id: "exp_13",
+    groupId: "group_5",
+    description: "Friday Lunch",
+    amount: 88,
+    currency: "USD",
+    paidById: "user_6",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 22 },
+      { memberId: "user_3", amount: 22 },
+      { memberId: "user_6", amount: 22, paid: 88 },
+      { memberId: "user_7", amount: 22 },
+    ],
+    createdAt: new Date(Date.now() - 42 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // You paid $120 team lunch → Sam, Marcus, Priya each owe you $30
+  {
+    id: "exp_13b",
+    groupId: "group_5",
+    description: "Team Lunch",
+    amount: 120,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 30, paid: 120 },
+      { memberId: "user_3", amount: 30 },
+      { memberId: "user_6", amount: 30 },
+      { memberId: "user_7", amount: 30 },
+    ],
+    createdAt: new Date(Date.now() - 41 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Net group_5: owed ($20+$30)×3=$150, owe $25+$22=$47 → net +$103 owed to you
+
+  // ── Group 6: Road Trip (USD) ───────────────────────────────────────────
+  // You paid $200 gas → Alex, Sam, Jordan, Emma each owe you $40
+  {
+    id: "exp_14",
+    groupId: "group_6",
+    description: "Gas",
+    amount: 200,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 40, paid: 200 },
+      { memberId: "user_2", amount: 40 },
+      { memberId: "user_3", amount: 40 },
+      { memberId: "user_4", amount: 40 },
+      { memberId: "user_5", amount: 40 },
+    ],
+    createdAt: new Date(Date.now() - 59 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "transport",
+  },
+  // Alex paid $300 hotel → you owe Alex $60
+  {
+    id: "exp_15",
+    groupId: "group_6",
+    description: "Hotel Night 1",
+    amount: 300,
+    currency: "USD",
+    paidById: "user_2",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 60 },
+      { memberId: "user_2", amount: 60, paid: 300 },
+      { memberId: "user_3", amount: 60 },
+      { memberId: "user_4", amount: 60 },
+      { memberId: "user_5", amount: 60 },
+    ],
+    createdAt: new Date(Date.now() - 58 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "accommodation",
+  },
+  // Jordan paid $250 hotel → you owe Jordan $50
+  {
+    id: "exp_16",
+    groupId: "group_6",
+    description: "Hotel Night 2",
+    amount: 250,
+    currency: "USD",
+    paidById: "user_4",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 50 },
+      { memberId: "user_2", amount: 50 },
+      { memberId: "user_3", amount: 50 },
+      { memberId: "user_4", amount: 50, paid: 250 },
+      { memberId: "user_5", amount: 50 },
+    ],
+    createdAt: new Date(Date.now() - 57 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "accommodation",
+  },
+  // Sam paid $150 food → you owe Sam $30
+  {
+    id: "exp_17",
+    groupId: "group_6",
+    description: "Food & Snacks",
+    amount: 150,
+    currency: "USD",
+    paidById: "user_3",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 30 },
+      { memberId: "user_2", amount: 30 },
+      { memberId: "user_3", amount: 30, paid: 150 },
+      { memberId: "user_4", amount: 30 },
+      { memberId: "user_5", amount: 30 },
+    ],
+    createdAt: new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Net group_6: owed $40×4=$160, owe $60+$50+$30=$140 → net +$20 owed to you
+
+  // ── Group 7: Book Club (USD) — you owe slightly ────────────────────────
+  // Marcus paid $90 books → you & Priya each owe Marcus $30
+  {
+    id: "exp_18",
+    groupId: "group_7",
+    description: "Book Bundle",
+    amount: 90,
+    currency: "USD",
+    paidById: "user_6",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 30 },
+      { memberId: "user_6", amount: 30, paid: 90 },
+      { memberId: "user_7", amount: 30 },
+    ],
+    createdAt: new Date(Date.now() - 89 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "other",
+  },
+  // You paid $60 venue → Marcus & Priya each owe you $20
+  {
+    id: "exp_19",
+    groupId: "group_7",
+    description: "Venue Hire",
+    amount: 60,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 20, paid: 60 },
+      { memberId: "user_6", amount: 20 },
+      { memberId: "user_7", amount: 20 },
+    ],
+    createdAt: new Date(Date.now() - 88 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "other",
+  },
+  // Priya paid $45 snacks → you & Marcus each owe Priya $15
+  {
+    id: "exp_20",
+    groupId: "group_7",
+    description: "Snacks & Drinks",
+    amount: 45,
+    currency: "USD",
+    paidById: "user_7",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 15 },
+      { memberId: "user_6", amount: 15 },
+      { memberId: "user_7", amount: 15, paid: 45 },
+    ],
+    createdAt: new Date(Date.now() - 87 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Net group_7: owed $20×2=$40, owe $30+$15=$45 → net -$5 (you owe $5)
+
+  // ── Group 8: Music Festival (EUR) ─────────────────────────────────────
+  // You paid €800 tickets → Alex, Emma, Priya each owe you €200
+  {
+    id: "exp_21",
+    groupId: "group_8",
+    description: "Festival Tickets",
+    amount: 800,
+    currency: "EUR",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 200, paid: 800 },
+      { memberId: "user_2", amount: 200 },
+      { memberId: "user_5", amount: 200 },
+      { memberId: "user_7", amount: 200 },
+    ],
+    createdAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "entertainment",
+    reactions: { "🎵": ["user_2", "user_5", "user_7"] },
+  },
+  // Alex paid €240 camping gear → you owe Alex €60
+  {
+    id: "exp_22",
+    groupId: "group_8",
+    description: "Camping Gear",
+    amount: 240,
+    currency: "EUR",
+    paidById: "user_2",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 60 },
+      { memberId: "user_2", amount: 60, paid: 240 },
+      { memberId: "user_5", amount: 60 },
+      { memberId: "user_7", amount: 60 },
+    ],
+    createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "other",
+  },
+  // Emma paid €160 food → you owe Emma €40
+  {
+    id: "exp_23",
+    groupId: "group_8",
+    description: "Food & Drinks",
+    amount: 160,
+    currency: "EUR",
+    paidById: "user_5",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 40 },
+      { memberId: "user_2", amount: 40 },
+      { memberId: "user_5", amount: 40, paid: 160 },
+      { memberId: "user_7", amount: 40 },
+    ],
+    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Net group_8: owed €200×3=€600, owe €60+€40=€100 → net +€500 owed to you
+
+  // ── Group 9: Gym Squad (USD) — you owe ────────────────────────────────
+  // Sam paid $150 monthly fee → you & Jordan each owe Sam $50
+  {
+    id: "exp_24",
+    groupId: "group_9",
+    description: "Monthly Membership",
+    amount: 150,
+    currency: "USD",
+    paidById: "user_3",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 50 },
+      { memberId: "user_3", amount: 50, paid: 150 },
+      { memberId: "user_4", amount: 50 },
+    ],
+    createdAt: new Date(Date.now() - 49 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "other",
+  },
+  // Jordan paid $30 guest pass → you & Sam each owe Jordan $10
+  {
+    id: "exp_25",
+    groupId: "group_9",
+    description: "Guest Day Pass",
+    amount: 30,
+    currency: "USD",
+    paidById: "user_4",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 10 },
+      { memberId: "user_3", amount: 10 },
+      { memberId: "user_4", amount: 10, paid: 30 },
+    ],
+    createdAt: new Date(Date.now() - 48 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "other",
+  },
+  // You paid $60 protein shakes → Sam & Jordan each owe you $20
+  {
+    id: "exp_25b",
+    groupId: "group_9",
+    description: "Protein Shakes",
+    amount: 60,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 20, paid: 60 },
+      { memberId: "user_3", amount: 20 },
+      { memberId: "user_4", amount: 20 },
+    ],
+    createdAt: new Date(Date.now() - 47 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Net group_9: owed $20×2=$40, owe $50+$10=$60 → net -$20 (you owe $20)
+
+  // ── Group 10: Birthday Dinner (USD) ───────────────────────────────────
+  // You paid $360 dinner → Alex, Sam, Jordan, Emma, Marcus each owe you $60
+  {
+    id: "exp_26",
+    groupId: "group_10",
+    description: "Restaurant Dinner",
+    amount: 360,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 60, paid: 360 },
+      { memberId: "user_2", amount: 60 },
+      { memberId: "user_3", amount: 60 },
+      { memberId: "user_4", amount: 60 },
+      { memberId: "user_5", amount: 60 },
+      { memberId: "user_6", amount: 60 },
+    ],
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+    reactions: { "🎉": ["user_2", "user_3", "user_4", "user_5", "user_6"] },
+  },
+  // Alex paid $120 cake → you owe Alex $20
+  {
+    id: "exp_27",
+    groupId: "group_10",
+    description: "Birthday Cake",
+    amount: 120,
+    currency: "USD",
+    paidById: "user_2",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 20 },
+      { memberId: "user_2", amount: 20, paid: 120 },
+      { memberId: "user_3", amount: 20 },
+      { memberId: "user_4", amount: 20 },
+      { memberId: "user_5", amount: 20 },
+      { memberId: "user_6", amount: 20 },
+    ],
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "food",
+  },
+  // Emma paid $180 venue → you owe Emma $30
+  {
+    id: "exp_28",
+    groupId: "group_10",
+    description: "Private Dining Room",
+    amount: 180,
+    currency: "USD",
+    paidById: "user_5",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 30 },
+      { memberId: "user_2", amount: 30 },
+      { memberId: "user_3", amount: 30 },
+      { memberId: "user_4", amount: 30 },
+      { memberId: "user_5", amount: 30, paid: 180 },
+      { memberId: "user_6", amount: 30 },
+    ],
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "other",
+  },
+  // Sam paid $60 decorations → you owe Sam $10
+  {
+    id: "exp_29",
+    groupId: "group_10",
+    description: "Decorations",
+    amount: 60,
+    currency: "USD",
+    paidById: "user_3",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 10 },
+      { memberId: "user_2", amount: 10 },
+      { memberId: "user_3", amount: 10, paid: 60 },
+      { memberId: "user_4", amount: 10 },
+      { memberId: "user_5", amount: 10 },
+      { memberId: "user_6", amount: 10 },
+    ],
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    category: "other",
+  },
+  // Net group_10: owed $60×5=$300, owe $20+$30+$10=$60 → net +$240 owed to you
 ];
 
 const defaultInvitations: GroupInvitation[] = [
