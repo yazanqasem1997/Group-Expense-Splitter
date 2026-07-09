@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
-import { ACCENT_META, AccentId } from "@/constants/colors";
+import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
 import { Currency, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -36,7 +36,6 @@ const CURRENCIES: { code: Currency; label: string; flag: string }[] = [
   { code: "AED", label: "UAE Dirham",         flag: "🇦🇪" },
 ];
 
-const ACCENT_ORDER: AccentId[] = ["ocean", "teal", "violet", "sunset", "forest", "rose"];
 
 function SectionTitle({ label }: { label: string }) {
   const { colors } = useTheme();
@@ -105,7 +104,7 @@ function ChevronRow({
 }
 
 export default function AccountScreen() {
-  const { colors, isDark, toggleDark, accentId, setAccent } = useTheme();
+  const { colors, isDark, toggleDark, themeId, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const {
     currentUser, updateCurrentUser,
@@ -298,14 +297,14 @@ export default function AccountScreen() {
           <Text style={[styles.rowLabel, { color: colors.text }]}>Theme</Text>
         </View>
         <View style={[styles.themePickerRow, { backgroundColor: colors.surface }]}>
-          {ACCENT_ORDER.map(id => {
-            const meta = ACCENT_META[id];
-            const swatch = isDark ? meta.darkPrimary : meta.lightPrimary;
-            const isSelected = accentId === id;
+          {THEME_ORDER.map(id => {
+            const meta = THEME_META[id];
+            const swatch = isDark ? meta.darkSwatch : meta.lightSwatch;
+            const isSelected = themeId === id;
             return (
               <Pressable
                 key={id}
-                onPress={() => setAccent(id)}
+                onPress={() => setTheme(id)}
                 style={[
                   styles.themeSwatch,
                   { backgroundColor: swatch },
@@ -318,16 +317,16 @@ export default function AccountScreen() {
           })}
         </View>
         <View style={[styles.themeLabelsRow, { backgroundColor: colors.surface }]}>
-          {ACCENT_ORDER.map(id => (
+          {THEME_ORDER.map(id => (
             <Text
               key={id}
               style={[
                 styles.themeLabel,
-                { color: accentId === id ? colors.primary : colors.textTertiary,
-                  fontFamily: accentId === id ? "Inter_600SemiBold" : "Inter_400Regular" },
+                { color: themeId === id ? colors.primary : colors.textTertiary,
+                  fontFamily: themeId === id ? "Inter_600SemiBold" : "Inter_400Regular" },
               ]}
             >
-              {ACCENT_META[id].label}
+              {THEME_META[id].label}
             </Text>
           ))}
         </View>
