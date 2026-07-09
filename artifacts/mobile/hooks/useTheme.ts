@@ -1,11 +1,8 @@
-import { ACCENTS, AccentId } from "@/constants/colors";
-import BaseColors from "@/constants/colors";
+import { THEMES, ThemeId } from "@/constants/themes";
 import { useThemeContext } from "@/context/ThemeContext";
 
 export function useTheme() {
-  const { isDark, toggleDark, accentId, setAccent } = useThemeContext();
-  const base = isDark ? BaseColors.dark : BaseColors.light;
-  const accentOverride = ACCENTS[accentId]?.[isDark ? "dark" : "light"];
-  const colors = accentOverride ? { ...base, ...accentOverride } : base;
-  return { colors, isDark, toggleDark, accentId, setAccent };
+  const { isDark, toggleDark, themeId, setTheme } = useThemeContext();
+  const colors = THEMES[themeId][isDark ? "dark" : "light"];
+  return { colors, isDark, toggleDark, themeId, setTheme };
 }

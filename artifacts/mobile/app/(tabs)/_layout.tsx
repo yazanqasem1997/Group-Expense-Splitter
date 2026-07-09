@@ -5,8 +5,8 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
-import Colors from "@/constants/colors";
+import { Platform, StyleSheet, View } from "react-native";
+import { useTheme } from "@/hooks/useTheme";
 
 function NativeTabLayout() {
   return (
@@ -36,11 +36,9 @@ function NativeTabLayout() {
 }
 
 function ClassicTabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const { colors, isDark } = useTheme();
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
-  const colors = isDark ? Colors.dark : Colors.light;
 
   return (
     <Tabs
