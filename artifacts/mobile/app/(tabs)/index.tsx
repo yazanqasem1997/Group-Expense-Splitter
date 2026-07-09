@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useMemo, useRef, useState } from "react";
 import {
@@ -141,7 +142,7 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
 }
 
 export default function GroupsScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { groups, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById } = useApp();
   const { youOwe, youAreOwed, currency: totalCurrency } = useMemo(() => getTotalOwed(), [getTotalOwed]);
@@ -187,7 +188,7 @@ export default function GroupsScreen() {
           )}
           <View style={{ flex: 1 }} />
           <Pressable
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            style={[styles.addBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/group/new"); }}
           >
             <Feather name="plus" size={22} color="#fff" />
@@ -195,7 +196,7 @@ export default function GroupsScreen() {
         </View>
 
         {/* Search bar */}
-        <View style={[styles.searchBar, { backgroundColor: colors.inputBg, borderColor: isSearching ? colors.primary : colors.border }]}>
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: isSearching ? colors.primary : "transparent" }]}>
           <Feather name="search" size={16} color={isSearching ? colors.primary : colors.textTertiary} />
           <TextInput
             ref={searchRef}
@@ -237,46 +238,53 @@ export default function GroupsScreen() {
             </View>
           ) : (
             <>
-              {/* Hero balance card */}
-              {hasBalance && (
-                <View style={[styles.heroCard, { backgroundColor: colors.surface }]}>
-                  <View style={styles.heroRow}>
-                    {youAreOwed > 0 && (
-                      <View style={styles.heroItem}>
-                        <View style={[styles.heroIconWrap, { backgroundColor: colors.successLight }]}>
-                          <Feather name="arrow-down-left" size={16} color={colors.positive} />
-                        </View>
-                        <Text style={[styles.heroLabel, { color: colors.textSecondary }]}>You are owed</Text>
-                        <Text style={[styles.heroAmount, { color: colors.positive }]}>
-                          {formatAmount(youAreOwed, totalCurrency)}
-                        </Text>
-                      </View>
-                    )}
-                    {youOwe > 0 && youAreOwed > 0 && (
-                      <View style={[styles.heroDivider, { backgroundColor: colors.border }]} />
-                    )}
-                    {youOwe > 0 && (
-                      <View style={styles.heroItem}>
-                        <View style={[styles.heroIconWrap, { backgroundColor: colors.dangerLight }]}>
-                          <Feather name="arrow-up-right" size={16} color={colors.negative} />
-                        </View>
-                        <Text style={[styles.heroLabel, { color: colors.textSecondary }]}>You owe</Text>
-                        <Text style={[styles.heroAmount, { color: colors.negative }]}>
-                          {formatAmount(youOwe, totalCurrency)}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  {youOwe > 0 && youAreOwed > 0 && (
-                    <View style={[styles.heroNetRow, { borderTopColor: colors.border }]}>
-                      <Text style={[styles.heroNetLabel, { color: colors.textSecondary }]}>Net balance</Text>
-                      <Text style={[styles.heroNetAmount, { color: netBalance >= 0 ? colors.positive : colors.negative }]}>
-                        {netBalance >= 0 ? "+" : ""}{formatAmount(Math.abs(netBalance), totalCurrency)}
+              {/* Hero balance card — gradient */}
+              {hasBalance && (() => {
+                const isPositive = netBalance >= 0;
+                const gradColors: [string, string, string] = isPositive
+                  ? isDark
+                    ? [colors.surfaceElevated, colors.primaryDark, colors.primaryDark]
+                    : [colors.primary, "#0EA5E9", colors.teal]
+                  : isDark
+                    ? ["#2A0E0E", "#3D1515", "#3D1515"]
+                    : [colors.danger, "#DC2626", "#991B1B"];
+                return (
+                  <LinearGradient
+                    colors={gradColors}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroCard}
+                  >
+                    {/* Decorative circles */}
+                    <View style={styles.heroCircle1} />
+                    <View style={styles.heroCircle2} />
+
+                    <View style={styles.heroDotRow}>
+                      <View style={styles.heroDot} />
+                      <Text style={styles.heroLabelWhite}>
+                        {youOwe > 0 && youAreOwed > 0 ? "Your net balance" : youAreOwed > 0 ? "You are owed" : "You owe"}
                       </Text>
                     </View>
-                  )}
-                </View>
-              )}
+                    <Text style={styles.heroAmountWhite}>
+                      {formatAmount(Math.abs(netBalance), totalCurrency)}
+                    </Text>
+
+                    {/* Breakdown pills when both owed and owe */}
+                    {youOwe > 0 && youAreOwed > 0 && (
+                      <View style={styles.heroPillRow}>
+                        <View style={styles.heroPill}>
+                          <Feather name="arrow-down-left" size={11} color="rgba(255,255,255,0.9)" />
+                          <Text style={styles.heroPillText}>{formatAmount(youAreOwed, totalCurrency)}</Text>
+                        </View>
+                        <View style={styles.heroPill}>
+                          <Feather name="arrow-up-right" size={11} color="rgba(255,255,255,0.9)" />
+                          <Text style={styles.heroPillText}>{formatAmount(youOwe, totalCurrency)}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </LinearGradient>
+                );
+              })()}
 
               {/* Pending invites */}
               {pendingInvites.length > 0 && (
@@ -301,6 +309,9 @@ export default function GroupsScreen() {
                   <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
                     {activeGroups.length} {activeGroups.length === 1 ? "group" : "groups"}
                   </Text>
+                  <Pressable onPress={() => {}}>
+                    <Text style={[styles.sectionSort, { color: colors.primary }]}>Sort</Text>
+                  </Pressable>
                 </View>
               )}
             </>
@@ -330,28 +341,31 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
     gap: 10,
   },
   headerTopRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 },
-  headerTitle: { fontSize: 30, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  headerTitle: { fontSize: 30, fontFamily: "Inter_800ExtraBold", letterSpacing: -0.8 },
   badge: {
     minWidth: 22, height: 22, borderRadius: 11,
     alignItems: "center", justifyContent: "center", paddingHorizontal: 5,
   },
   badgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff" },
   addBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 42, height: 42, borderRadius: 13,
     alignItems: "center", justifyContent: "center",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 4, elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.30, shadowRadius: 8, elevation: 6,
   },
   searchBar: {
     flexDirection: "row", alignItems: "center", gap: 9,
-    height: 44, borderRadius: 14, borderWidth: 1,
+    height: 46, borderRadius: 14, borderWidth: 1.5,
     paddingHorizontal: 13,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
   searchInput: {
     flex: 1, fontSize: 15, fontFamily: "Inter_400Regular",
@@ -364,26 +378,45 @@ const styles = StyleSheet.create({
   searchResultText: { fontSize: 13, fontFamily: "Inter_500Medium" },
 
   listContent: { padding: 16, gap: 2 },
+
+  /* Gradient hero card */
   heroCard: {
-    borderRadius: 18, marginBottom: 16, overflow: "hidden",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08, shadowRadius: 12, elevation: 3,
+    borderRadius: 20, marginBottom: 16, overflow: "hidden",
+    padding: 22,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18, shadowRadius: 16, elevation: 8,
   },
-  heroRow: { flexDirection: "row", paddingVertical: 6 },
-  heroItem: { flex: 1, alignItems: "center", paddingVertical: 16, paddingHorizontal: 12 },
-  heroIconWrap: {
-    width: 34, height: 34, borderRadius: 10,
-    alignItems: "center", justifyContent: "center", marginBottom: 8,
+  heroCircle1: {
+    position: "absolute", top: -35, right: -35,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
-  heroLabel: { fontSize: 11, fontFamily: "Inter_500Medium", marginBottom: 4 },
-  heroAmount: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  heroDivider: { width: 1, marginVertical: 16, alignSelf: "stretch" },
-  heroNetRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 18, paddingVertical: 10, borderTopWidth: 1,
+  heroCircle2: {
+    position: "absolute", bottom: -25, left: 50,
+    width: 90, height: 90, borderRadius: 45,
+    backgroundColor: "rgba(255,255,255,0.07)",
   },
-  heroNetLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
-  heroNetAmount: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  heroDotRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  heroDot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.75)",
+  },
+  heroLabelWhite: {
+    fontSize: 13, fontFamily: "Inter_500Medium",
+    color: "rgba(255,255,255,0.85)", letterSpacing: 0.2,
+  },
+  heroAmountWhite: {
+    fontSize: 40, fontFamily: "Inter_800ExtraBold",
+    color: "#FFFFFF", letterSpacing: -1.2, lineHeight: 46,
+  },
+  heroPillRow: { flexDirection: "row", gap: 8, marginTop: 14 },
+  heroPill: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 8, paddingHorizontal: 11, paddingVertical: 5,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.22)",
+  },
+  heroPillText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#FFFFFF" },
 
   invitesSection: { marginBottom: 12 },
   invitesSectionHeader: { marginBottom: 10 },
@@ -418,8 +451,12 @@ const styles = StyleSheet.create({
   inviteAcceptBtn: { paddingHorizontal: 14 },
   inviteBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 
-  sectionLabelRow: { flexDirection: "row", alignItems: "center", marginBottom: 8, marginTop: 2 },
-  sectionLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.8 },
+  sectionLabelRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginBottom: 10, marginTop: 2, paddingHorizontal: 2,
+  },
+  sectionLabel: { fontSize: 11.5, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 1 },
+  sectionSort: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 
   groupCard: {
     flexDirection: "row", borderRadius: 18, marginBottom: 10, overflow: "hidden",
