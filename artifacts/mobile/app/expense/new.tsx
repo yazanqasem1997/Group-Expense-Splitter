@@ -166,22 +166,10 @@ export default function NewExpenseScreen() {
     });
   }
 
-  async function handleScanReceipt() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow photo access to scan receipts.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: "images",
-      allowsEditing: false,
-      quality: 0.8,
-    });
-    if (result.canceled) return;
-
+  async function processImage(uri: string) {
     setScanLoading(true);
     try {
-      const data = await parseReceipt(result.assets[0].uri);
+      const data = await parseReceipt(uri);
       if (data.description) {
         setDescription(data.description);
         if (data.amount > 0) setAmountStr(data.amount.toString());
@@ -199,6 +187,42 @@ export default function NewExpenseScreen() {
     } finally {
       setScanLoading(false);
     }
+  }
+
+  async function pickFromLibrary() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo library access to scan receipts.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (!result.canceled) await processImage(result.assets[0].uri);
+  }
+
+  async function pickFromCamera() {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow camera access to take a receipt photo.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (!result.canceled) await processImage(result.assets[0].uri);
+  }
+
+  function handleScanReceipt() {
+    Alert.alert("Scan Receipt", "How would you like to add a photo?", [
+      { text: "Take Photo", onPress: pickFromCamera },
+      { text: "Choose from Library", onPress: pickFromLibrary },
+      { text: "Cancel", style: "cancel" },
+    ]);
   }
 
   function handleAddCustomCategory() {
