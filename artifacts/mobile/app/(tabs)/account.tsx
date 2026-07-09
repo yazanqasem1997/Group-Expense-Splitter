@@ -6,6 +6,7 @@ import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  LayoutAnimation,
   Modal,
   Platform,
   Pressable,
@@ -175,6 +176,17 @@ export default function AccountScreen() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
   const nameInputRef = useRef<TextInput>(null);
+  const [expandedNotifCats, setExpandedNotifCats] = useState<string[]>(["expenses", "social", "financial"]);
+
+  function toggleNotifCat(cat: string) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS !== "web") {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    setExpandedNotifCats(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    );
+  }
 
 
   const handleRefreshRates = useCallback(async () => {
@@ -299,21 +311,101 @@ export default function AccountScreen() {
       {/* Notifications */}
       <SectionTitle label="Notifications" />
       <View style={[styles.section, { shadowColor: colors.shadow }]}>
-        <ToggleRow
-          icon="dollar-sign" iconBg={colors.primaryLight} iconColor={colors.primary}
-          label="Expense alerts" sub="When someone adds an expense to your group"
-          value={notifPrefs.expenseAdded} onToggle={() => updateNotifPref("expenseAdded", !notifPrefs.expenseAdded)}
-        />
-        <ToggleRow
-          icon="check-circle" iconBg={colors.tealTint} iconColor={colors.teal}
-          label="Settlement alerts" sub="When a debt is paid or settled"
-          value={notifPrefs.settlement} onToggle={() => updateNotifPref("settlement", !notifPrefs.settlement)}
-        />
-        <ToggleRow
-          icon="users" iconBg={colors.accentTint} iconColor={colors.accent}
-          label="Group invites" sub="When someone invites you to a group"
-          value={notifPrefs.invite} onToggle={() => updateNotifPref("invite", !notifPrefs.invite)} isLast
-        />
+
+        {/* — Expenses category — */}
+        <Pressable
+          style={[styles.notifCatRow, { backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
+          onPress={() => toggleNotifCat("expenses")}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: colors.primaryLight }]}>
+            <Feather name="dollar-sign" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Expenses</Text>
+            <Text style={[styles.rowSub, { color: colors.textSecondary }]}>New, edits &amp; deletions</Text>
+          </View>
+          <Feather name={expandedNotifCats.includes("expenses") ? "chevron-up" : "chevron-down"} size={16} color={colors.textTertiary} />
+        </Pressable>
+        {expandedNotifCats.includes("expenses") && (
+          <View style={[styles.notifSubGroup, { borderColor: colors.border }]}>
+            <ToggleRow
+              icon="plus-circle" iconBg={colors.primaryLight + "88"} iconColor={colors.primary}
+              label="New expense" sub="Someone adds an expense to your group"
+              value={notifPrefs.expenseAdded} onToggle={() => updateNotifPref("expenseAdded", !notifPrefs.expenseAdded)}
+            />
+            <ToggleRow
+              icon="edit-2" iconBg={colors.primaryLight + "88"} iconColor={colors.primary}
+              label="Expense edited" sub="Someone modifies an existing expense"
+              value={notifPrefs.expenseEdited} onToggle={() => updateNotifPref("expenseEdited", !notifPrefs.expenseEdited)}
+            />
+            <ToggleRow
+              icon="trash-2" iconBg={colors.dangerLight ?? colors.primaryLight + "88"} iconColor={colors.danger}
+              label="Expense deleted" sub="Someone removes an expense from the group"
+              value={notifPrefs.expenseDeleted} onToggle={() => updateNotifPref("expenseDeleted", !notifPrefs.expenseDeleted)}
+              isLast
+            />
+          </View>
+        )}
+
+        {/* — Social category — */}
+        <Pressable
+          style={[styles.notifCatRow, { backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
+          onPress={() => toggleNotifCat("social")}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: colors.accentTint }]}>
+            <Feather name="message-circle" size={18} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Social</Text>
+            <Text style={[styles.rowSub, { color: colors.textSecondary }]}>Comments &amp; reactions</Text>
+          </View>
+          <Feather name={expandedNotifCats.includes("social") ? "chevron-up" : "chevron-down"} size={16} color={colors.textTertiary} />
+        </Pressable>
+        {expandedNotifCats.includes("social") && (
+          <View style={[styles.notifSubGroup, { borderColor: colors.border }]}>
+            <ToggleRow
+              icon="message-square" iconBg={colors.accentTint + "88"} iconColor={colors.accent}
+              label="Comments" sub="Someone comments on an expense"
+              value={notifPrefs.comment} onToggle={() => updateNotifPref("comment", !notifPrefs.comment)}
+            />
+            <ToggleRow
+              icon="heart" iconBg={colors.accentTint + "88"} iconColor={colors.accent}
+              label="Reactions" sub="Someone reacts to an expense"
+              value={notifPrefs.reaction} onToggle={() => updateNotifPref("reaction", !notifPrefs.reaction)}
+              isLast
+            />
+          </View>
+        )}
+
+        {/* — Financial category — */}
+        <Pressable
+          style={[styles.notifCatRow, { backgroundColor: colors.surface }]}
+          onPress={() => toggleNotifCat("financial")}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: colors.tealTint }]}>
+            <Feather name="check-circle" size={18} color={colors.teal} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Financial</Text>
+            <Text style={[styles.rowSub, { color: colors.textSecondary }]}>Settlements &amp; invites</Text>
+          </View>
+          <Feather name={expandedNotifCats.includes("financial") ? "chevron-up" : "chevron-down"} size={16} color={colors.textTertiary} />
+        </Pressable>
+        {expandedNotifCats.includes("financial") && (
+          <View style={[styles.notifSubGroup, { borderColor: colors.border }]}>
+            <ToggleRow
+              icon="check-circle" iconBg={colors.tealTint + "88"} iconColor={colors.teal}
+              label="Settlements" sub="When a debt is paid or settled"
+              value={notifPrefs.settlement} onToggle={() => updateNotifPref("settlement", !notifPrefs.settlement)}
+            />
+            <ToggleRow
+              icon="users" iconBg={colors.tealTint + "88"} iconColor={colors.teal}
+              label="Group invites" sub="When someone invites you to a group"
+              value={notifPrefs.invite} onToggle={() => updateNotifPref("invite", !notifPrefs.invite)}
+              isLast
+            />
+          </View>
+        )}
       </View>
 
       {/* Appearance */}
@@ -399,24 +491,6 @@ export default function AccountScreen() {
         />
       </View>
 
-      {/* Features */}
-      <SectionTitle label="Features" />
-      <View style={[styles.section, { shadowColor: colors.shadow }]}>
-        <ChevronRow
-          icon="repeat" iconBg={colors.tealTint} iconColor={colors.teal}
-          label="Recurring Expenses"
-          value={recurringExpenses.length > 0 ? `${recurringExpenses.filter(r => r.isActive).length} active` : "None set up"}
-          onPress={() => router.push("/recurring")}
-        />
-        <ChevronRow
-          icon="git-merge" iconBg={colors.accentTint} iconColor={colors.accent}
-          label="Simplify Debts"
-          value={simplifyDebtsEnabled ? "On" : "Off"}
-          onPress={toggleSimplifyDebts}
-          isLast
-        />
-      </View>
-
       {/* Preferences */}
       <SectionTitle label="Preferences" />
       <View style={[styles.section, { shadowColor: colors.shadow }]}>
@@ -431,6 +505,12 @@ export default function AccountScreen() {
           label="Default Currency"
           value={`${selectedCurrencyInfo.flag}  ${defaultCurrency}`}
           onPress={() => setShowCurrencyPicker(true)}
+        />
+        <ChevronRow
+          icon="repeat" iconBg={colors.tealTint} iconColor={colors.teal}
+          label="Recurring Expenses"
+          value={recurringExpenses.length > 0 ? `${recurringExpenses.filter(r => r.isActive).length} active` : "None set up"}
+          onPress={() => router.push("/recurring")}
           isLast
         />
       </View>
@@ -615,6 +695,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 8,
     marginTop: 4,
+  },
+  notifCatRow: {
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14,
+  },
+  notifSubGroup: {
+    borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 0,
   },
   section: {
     marginHorizontal: 16,

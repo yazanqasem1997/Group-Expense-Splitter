@@ -40,7 +40,7 @@ const SPLIT_TYPES: { value: SplitType; label: string; desc: string }[] = [
 ];
 
 export default function NewExpenseScreen() {
-  const { groupId } = useLocalSearchParams<{ groupId: string }>();
+  const { groupId, expenseId } = useLocalSearchParams<{ groupId: string; expenseId?: string }>();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const {
@@ -48,19 +48,33 @@ export default function NewExpenseScreen() {
     getMemberById,
     currentUser,
     addExpense,
+    updateExpense,
+    expenses,
     customCategories,
     addCustomCategory,
   } = useApp();
 
-  const group = getGroupById(groupId ?? "");
-  const [description, setDescription] = useState("");
-  const [amountStr, setAmountStr] = useState("");
-  const [paidById, setPaidById] = useState(currentUser.id);
-  const [category, setCategory] = useState<string>("food");
+  const existingExpense = expenseId ? expenses.find(e => e.id === expenseId) : undefined;
+  const isEditing = !!existingExpense;
+  const resolvedGroupId = existingExpense?.groupId ?? groupId ?? "";
+  const group = getGroupById(resolvedGroupId);
+
+  const [description, setDescription] = useState(existingExpense?.description ?? "");
+  const [amountStr, setAmountStr] = useState(existingExpense ? String(existingExpense.amount) : "");
+  const [paidById, setPaidById] = useState(existingExpense?.paidById ?? currentUser.id);
+  const [category, setCategory] = useState<string>(existingExpense?.category ?? "food");
   const [autoCategory, setAutoCategory] = useState<string | null>(null);
-  const [splitType, setSplitType] = useState<SplitType>("equal");
-  const [exactAmounts, setExactAmounts] = useState<Record<string, string>>({});
-  const [percentages, setPercentages] = useState<Record<string, string>>({});
+  const [splitType, setSplitType] = useState<SplitType>(existingExpense?.splitType ?? "equal");
+  const [exactAmounts, setExactAmounts] = useState<Record<string, string>>(
+    existingExpense?.splitType === "exact"
+      ? Object.fromEntries(existingExpense.splits.map(s => [s.memberId, String(s.amount)]))
+      : {}
+  );
+  const [percentages, setPercentages] = useState<Record<string, string>>(
+    existingExpense?.splitType === "percentage"
+      ? Object.fromEntries(existingExpense.splits.map(s => [s.memberId, String(s.percentage ?? 0)]))
+      : {}
+  );
   const [scanLoading, setScanLoading] = useState(false);
   const [showAddCat, setShowAddCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
@@ -217,16 +231,27 @@ export default function NewExpenseScreen() {
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addExpense({
-      groupId: group.id,
-      description: description.trim(),
-      amount,
-      currency: group.currency,
-      paidById,
-      splitType,
-      splits,
-      category,
-    });
+    if (isEditing && existingExpense) {
+      updateExpense(existingExpense.id, {
+        description: description.trim(),
+        amount,
+        paidById,
+        splitType,
+        splits,
+        category,
+      });
+    } else {
+      addExpense({
+        groupId: group.id,
+        description: description.trim(),
+        amount,
+        currency: group.currency,
+        paidById,
+        splitType,
+        splits,
+        category,
+      });
+    }
     router.back();
   }
 
@@ -253,7 +278,7 @@ export default function NewExpenseScreen() {
         <Pressable onPress={() => router.back()}>
           <Feather name="x" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Add Expense</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>{isEditing ? "Edit Expense" : "Add Expense"}</Text>
         <View style={styles.headerRight}>
           <Pressable
             style={[styles.scanBtn, { backgroundColor: colors.primaryLight }]}

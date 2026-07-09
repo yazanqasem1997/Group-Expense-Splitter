@@ -30,6 +30,7 @@ export default function ExpenseDetailScreen() {
   const {
     expenses, getMemberById, getGroupById,
     deleteExpense, currentUser, toggleReaction, addExpenseComment,
+    updateExpense,
   } = useApp();
 
   const [commentText, setCommentText] = useState("");
@@ -92,9 +93,16 @@ export default function ExpenseDetailScreen() {
           <Feather name="arrow-left" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Expense</Text>
-        <Pressable onPress={handleDelete}>
-          <Feather name="trash-2" size={22} color={colors.danger} />
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+          <Pressable
+            onPress={() => router.push({ pathname: "/expense/new", params: { expenseId: id, groupId: expense.groupId } })}
+          >
+            <Feather name="edit-2" size={20} color={colors.primary} />
+          </Pressable>
+          <Pressable onPress={handleDelete}>
+            <Feather name="trash-2" size={22} color={colors.danger} />
+          </Pressable>
+        </View>
       </View>
 
       <KeyboardAvoidingView
