@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -15,6 +15,8 @@ import { Currency, CURRENCY_SYMBOLS, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 
 type Period = "7D" | "1M" | "3M" | "All";
+type ChartView = "you" | "members" | "categories";
+
 const PERIODS: Period[] = ["7D", "1M", "3M", "All"];
 
 function periodMs(period: Period): number | null {
@@ -28,22 +30,25 @@ export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const {
-    expenses,
-    groups,
-    currentUser,
-    defaultCurrency,
-    convertAmount,
-    exchangeRates,
+    expenses, groups, currentUser,
+    defaultCurrency, convertAmount, exchangeRates, getMemberById,
   } = useApp();
 
   const [period, setPeriod] = useState<Period>("1M");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [displayCurrency, setDisplayCurrency] = useState<Currency | null>(null);
+  const [chartView, setChartView] = useState<ChartView>("you");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const chartWidth = width - 32;
-
   const activeCurrency: Currency = displayCurrency ?? defaultCurrency;
+  const hasRates = Object.keys(exchangeRates).length > 0;
+
+  const selectedGroup = selectedGroupId !== "all" ? groups.find(g => g.id === selectedGroupId) : null;
+
+  useEffect(() => {
+    if (selectedGroupId === "all" && chartView === "members") setChartView("you");
+  }, [selectedGroupId]);
 
   const filteredExpenses = useMemo(() => {
     const cutoff = periodMs(period);
@@ -55,12 +60,9 @@ export default function AnalyticsScreen() {
     });
   }, [expenses, period, selectedGroupId]);
 
-  const hasRates = Object.keys(exchangeRates).length > 0;
-
   function toDisplay(amount: number, groupId: string): number {
     const group = groups.find(g => g.id === groupId);
-    if (!group) return amount;
-    if (!hasRates) return amount;
+    if (!group || !hasRates) return amount;
     return convertAmount(amount, group.currency, activeCurrency);
   }
 
@@ -73,22 +75,20 @@ export default function AnalyticsScreen() {
     () => myExpenses.reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0),
     [myExpenses, activeCurrency, hasRates]
   );
-
   const totalGroup = useMemo(
     () => filteredExpenses.reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0),
     [filteredExpenses, activeCurrency, hasRates]
   );
-
   const myShareTotal = useMemo(
-    () =>
-      filteredExpenses.reduce((s, e) => {
-        const split = e.splits.find(sp => sp.memberId === currentUser.id);
-        return s + toDisplay(split?.amount ?? 0, e.groupId);
-      }, 0),
+    () => filteredExpenses.reduce((s, e) => {
+      const split = e.splits.find(sp => sp.memberId === currentUser.id);
+      return s + toDisplay(split?.amount ?? 0, e.groupId);
+    }, 0),
     [filteredExpenses, currentUser, activeCurrency, hasRates]
   );
 
-  const chartSeries: ChartSeries[] = useMemo(() => {
+  const youSeries: ChartSeries[] = useMemo(() => {
+    if (chartView !== "you") return [];
     const sorted = [...myExpenses].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
@@ -98,28 +98,72 @@ export default function AnalyticsScreen() {
       return { timestamp: new Date(e.createdAt).getTime(), value: cum };
     });
     if (points.length === 0) return [];
-    return [{ label: "Amount paid by you", color: colors.primary, points }];
-  }, [myExpenses, activeCurrency, hasRates, colors.primary]);
+    return [{ label: "Paid by you", color: colors.primary, points }];
+  }, [chartView, myExpenses, colors.primary, activeCurrency, hasRates]);
+
+  const membersSeries: ChartSeries[] = useMemo(() => {
+    if (chartView !== "members" || !selectedGroup) return [];
+    return selectedGroup.memberIds
+      .map(memberId => {
+        const member = getMemberById(memberId);
+        const mExpenses = filteredExpenses
+          .filter(e => e.paidById === memberId)
+          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        let cum = 0;
+        const points = mExpenses.map(e => {
+          cum += toDisplay(e.amount, e.groupId);
+          return { timestamp: new Date(e.createdAt).getTime(), value: cum };
+        });
+        return {
+          label: member?.isCurrentUser ? "You" : (member?.name ?? "Unknown"),
+          color: member?.avatarColor ?? colors.textTertiary,
+          points,
+        };
+      })
+      .filter(s => s.points.length > 0);
+  }, [chartView, selectedGroup, filteredExpenses, getMemberById, activeCurrency, hasRates]);
+
+  const categorySeries: ChartSeries[] = useMemo(() => {
+    if (chartView !== "categories") return [];
+    const catMap: Record<string, { ts: number; amount: number }[]> = {};
+    filteredExpenses.forEach(e => {
+      if (!catMap[e.category]) catMap[e.category] = [];
+      catMap[e.category].push({ ts: new Date(e.createdAt).getTime(), amount: toDisplay(e.amount, e.groupId) });
+    });
+    const catColors: Record<string, string> = {
+      food: colors.accent, transport: colors.teal, accommodation: colors.primary,
+      entertainment: "#9B59B6", utilities: "#E67E22", shopping: "#E91E63",
+      health: colors.success, other: colors.textTertiary,
+    };
+    return Object.entries(catMap)
+      .map(([cat, items]) => {
+        const sorted = [...items].sort((a, b) => a.ts - b.ts);
+        let cum = 0;
+        const points = sorted.map(item => { cum += item.amount; return { timestamp: item.ts, value: cum }; });
+        return { label: cat.charAt(0).toUpperCase() + cat.slice(1), color: catColors[cat] ?? colors.textTertiary, points };
+      })
+      .sort((a, b) => (b.points.at(-1)?.value ?? 0) - (a.points.at(-1)?.value ?? 0));
+  }, [chartView, filteredExpenses, activeCurrency, hasRates, colors]);
+
+  const activeChartSeries = chartView === "members" ? membersSeries
+    : chartView === "categories" ? categorySeries
+    : youSeries;
+
+  const chartSubtitle =
+    chartView === "members" ? "Cumulative payments per person"
+    : chartView === "categories" ? "Cumulative spend by category"
+    : "Cumulative amount you paid";
 
   const categoryTotals = useMemo(() => {
     const map: Record<string, number> = {};
-    myExpenses.forEach(e => {
-      map[e.category] = (map[e.category] ?? 0) + toDisplay(e.amount, e.groupId);
-    });
-    return Object.keys(map)
-      .map(cat => ({ cat, total: map[cat] }))
-      .sort((a, b) => b.total - a.total);
+    myExpenses.forEach(e => { map[e.category] = (map[e.category] ?? 0) + toDisplay(e.amount, e.groupId); });
+    return Object.keys(map).map(cat => ({ cat, total: map[cat] })).sort((a, b) => b.total - a.total);
   }, [myExpenses, activeCurrency, hasRates]);
 
   const CATEGORY_COLORS: Record<string, string> = {
-    food: colors.accent,
-    transport: colors.teal,
-    accommodation: colors.primary,
-    entertainment: "#9B59B6",
-    utilities: "#E67E22",
-    shopping: "#E91E63",
-    health: colors.success,
-    other: colors.textTertiary,
+    food: colors.accent, transport: colors.teal, accommodation: colors.primary,
+    entertainment: "#9B59B6", utilities: "#E67E22", shopping: "#E91E63",
+    health: colors.success, other: colors.textTertiary,
   };
 
   const sym = CURRENCY_SYMBOLS[activeCurrency] ?? "$";
@@ -133,6 +177,18 @@ export default function AnalyticsScreen() {
 
   const showCurrencyPicker = availableCurrencies.length > 1;
 
+  const chartViews: { value: ChartView; label: string; icon: string }[] =
+    selectedGroupId !== "all"
+      ? [
+          { value: "you", label: "You", icon: "user" },
+          { value: "members", label: "Members", icon: "users" },
+          { value: "categories", label: "Categories", icon: "pie-chart" },
+        ]
+      : [
+          { value: "you", label: "You", icon: "user" },
+          { value: "categories", label: "Categories", icon: "pie-chart" },
+        ];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: colors.headerBg }]}>
@@ -144,49 +200,29 @@ export default function AnalyticsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
       >
         {/* Group filter */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           <Pressable
-            style={[
-              styles.chip,
-              {
-                backgroundColor: selectedGroupId === "all" ? colors.primary : colors.surface,
-                borderColor: selectedGroupId === "all" ? colors.primary : colors.border,
-              },
-            ]}
+            style={[styles.chip, {
+              backgroundColor: selectedGroupId === "all" ? colors.primary : colors.surface,
+              borderColor: selectedGroupId === "all" ? colors.primary : colors.border,
+            }]}
             onPress={() => setSelectedGroupId("all")}
           >
-            <Text
-              style={[
-                styles.chipText,
-                { color: selectedGroupId === "all" ? "#fff" : colors.textSecondary },
-              ]}
-            >
+            <Text style={[styles.chipText, { color: selectedGroupId === "all" ? "#fff" : colors.textSecondary }]}>
               All Groups
             </Text>
           </Pressable>
           {groups.map(g => (
             <Pressable
               key={g.id}
-              style={[
-                styles.chip,
-                {
-                  backgroundColor: selectedGroupId === g.id ? colors.primary : colors.surface,
-                  borderColor: selectedGroupId === g.id ? colors.primary : colors.border,
-                },
-              ]}
+              style={[styles.chip, {
+                backgroundColor: selectedGroupId === g.id ? colors.primary : colors.surface,
+                borderColor: selectedGroupId === g.id ? colors.primary : colors.border,
+              }]}
               onPress={() => setSelectedGroupId(g.id)}
             >
               <Text style={styles.chipEmoji}>{g.emoji}</Text>
-              <Text
-                style={[
-                  styles.chipText,
-                  { color: selectedGroupId === g.id ? "#fff" : colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.chipText, { color: selectedGroupId === g.id ? "#fff" : colors.textSecondary }]}>
                 {g.name}
               </Text>
             </Pressable>
@@ -198,20 +234,10 @@ export default function AnalyticsScreen() {
           {PERIODS.map(p => (
             <Pressable
               key={p}
-              style={[
-                styles.periodBtn,
-                period === p && { backgroundColor: colors.primary, borderRadius: 8 },
-              ]}
+              style={[styles.periodBtn, period === p && { backgroundColor: colors.primary, borderRadius: 8 }]}
               onPress={() => setPeriod(p)}
             >
-              <Text
-                style={[
-                  styles.periodText,
-                  { color: period === p ? "#fff" : colors.textSecondary },
-                ]}
-              >
-                {p}
-              </Text>
+              <Text style={[styles.periodText, { color: period === p ? "#fff" : colors.textSecondary }]}>{p}</Text>
             </Pressable>
           ))}
         </View>
@@ -226,13 +252,10 @@ export default function AnalyticsScreen() {
               return (
                 <Pressable
                   key={c}
-                  style={[
-                    styles.currencyChip,
-                    {
-                      backgroundColor: active ? colors.primary : colors.background,
-                      borderColor: active ? colors.primary : colors.border,
-                    },
-                  ]}
+                  style={[styles.currencyChip, {
+                    backgroundColor: active ? colors.primary : colors.background,
+                    borderColor: active ? colors.primary : colors.border,
+                  }]}
                   onPress={() => setDisplayCurrency(c)}
                 >
                   <Text style={[styles.currencyChipText, { color: active ? "#fff" : colors.textSecondary }]}>
@@ -241,9 +264,7 @@ export default function AnalyticsScreen() {
                 </Pressable>
               );
             })}
-            {!hasRates && (
-              <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>· rates offline</Text>
-            )}
+            {!hasRates && <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>· rates offline</Text>}
           </View>
         )}
 
@@ -254,38 +275,48 @@ export default function AnalyticsScreen() {
               <Feather name="credit-card" size={18} color={colors.primary} />
             </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>You paid</Text>
-            <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {sym}{totalSpent.toFixed(0)}
-            </Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{sym}{totalSpent.toFixed(0)}</Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
             <View style={[styles.summaryIcon, { backgroundColor: colors.tealTint }]}>
               <Feather name="pie-chart" size={18} color={colors.teal} />
             </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Your share</Text>
-            <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {sym}{myShareTotal.toFixed(0)}
-            </Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{sym}{myShareTotal.toFixed(0)}</Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
             <View style={[styles.summaryIcon, { backgroundColor: colors.accentTint }]}>
               <Feather name="users" size={18} color={colors.accent} />
             </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Group total</Text>
-            <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {sym}{totalGroup.toFixed(0)}
-            </Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{sym}{totalGroup.toFixed(0)}</Text>
           </View>
         </View>
 
         {/* Spending chart */}
         <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Spending over time</Text>
-          <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-            Cumulative amount you paid · {period === "All" ? "All time" : `Last ${period}`}
-          </Text>
+          <View style={styles.chartHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Spending over time</Text>
+              <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+                {chartSubtitle} · {period === "All" ? "All time" : `Last ${period}`}
+              </Text>
+            </View>
+            {/* Chart view toggle */}
+            <View style={[styles.viewToggle, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              {chartViews.map(v => (
+                <Pressable
+                  key={v.value}
+                  style={[styles.viewBtn, chartView === v.value && { backgroundColor: colors.primary }]}
+                  onPress={() => setChartView(v.value)}
+                >
+                  <Feather name={v.icon as any} size={13} color={chartView === v.value ? "#fff" : colors.textSecondary} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
           <LineChartSvg
-            series={chartSeries}
+            series={activeChartSeries}
             width={chartWidth - 32}
             height={200}
             formatY={v => `${sym}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0)}`}
@@ -308,17 +339,10 @@ export default function AnalyticsScreen() {
                 <View key={cat} style={styles.catRow}>
                   <Text style={[styles.catLabel, { color: colors.text }]}>{label}</Text>
                   <View style={styles.catBarWrap}>
-                    <View
-                      style={[
-                        styles.catBar,
-                        { backgroundColor: barColor, width: `${Math.max(pct * 100, 2)}%` as any },
-                      ]}
-                    />
+                    <View style={[styles.catBar, { backgroundColor: barColor, width: `${Math.max(pct * 100, 2)}%` as any }]} />
                     <View style={[styles.catBarBg, { backgroundColor: colors.border }]} />
                   </View>
-                  <Text style={[styles.catValue, { color: colors.textSecondary }]}>
-                    {sym}{total.toFixed(0)}
-                  </Text>
+                  <Text style={[styles.catValue, { color: colors.textSecondary }]}>{sym}{total.toFixed(0)}</Text>
                 </View>
               );
             })}
@@ -344,93 +368,44 @@ const styles = StyleSheet.create({
   content: { paddingTop: 16, gap: 12 },
   filterRow: { paddingHorizontal: 16, gap: 8 },
   chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1,
   },
   chipEmoji: { fontSize: 14 },
   chipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   periodBar: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 4,
+    flexDirection: "row", marginHorizontal: 16, borderRadius: 12, borderWidth: 1, padding: 4,
   },
-  periodBtn: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 8,
-  },
+  periodBtn: { flex: 1, alignItems: "center", paddingVertical: 8 },
   periodText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   currencyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginHorizontal: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 12,
-    borderWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginHorizontal: 16, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, borderWidth: 1,
   },
   currencyLabel: { fontSize: 12, fontFamily: "Inter_500Medium", marginRight: 2 },
-  currencyChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
+  currencyChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   currencyChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   ratesNote: { fontSize: 11, fontFamily: "Inter_400Regular", marginLeft: 2 },
-  summaryRow: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    gap: 10,
-  },
+  summaryRow: { flexDirection: "row", marginHorizontal: 16, gap: 10 },
   summaryCard: {
-    flex: 1,
-    borderRadius: 14,
-    padding: 12,
-    gap: 6,
-    alignItems: "flex-start",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    flex: 1, borderRadius: 14, padding: 12, gap: 6, alignItems: "flex-start",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
-  summaryIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
+  summaryIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 2 },
   summaryLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
   summaryValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   chartCard: {
-    marginHorizontal: 16,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    marginHorizontal: 16, borderRadius: 16, padding: 16,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
+  chartHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: 14 },
   sectionTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
-  sectionSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 14 },
-  catRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 12,
+  sectionSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  viewToggle: {
+    flexDirection: "row", borderRadius: 10, borderWidth: 1, padding: 3, gap: 2,
   },
+  viewBtn: { padding: 6, borderRadius: 7 },
+  catRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 },
   catLabel: { width: 90, fontSize: 13, fontFamily: "Inter_500Medium" },
   catBarWrap: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden", position: "relative" },
   catBarBg: { ...StyleSheet.absoluteFillObject, borderRadius: 4 },

@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { ToastProvider } from "@/context/ToastContext";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -56,11 +57,13 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
+              <ToastProvider>
               <ThemeProvider>
-              <AppProvider>
-                <RootLayoutNav />
-              </AppProvider>
-            </ThemeProvider>
+                <AppProvider>
+                  <RootLayoutNav />
+                </AppProvider>
+              </ThemeProvider>
+            </ToastProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

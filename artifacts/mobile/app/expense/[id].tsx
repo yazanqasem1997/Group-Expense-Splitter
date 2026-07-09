@@ -38,7 +38,9 @@ export default function ExpenseDetailScreen() {
 
   const group = getGroupById(expense.groupId);
   const payer = getMemberById(expense.paidById);
+  const loggedByMember = expense.addedBy ? getMemberById(expense.addedBy) : undefined;
   const youPaid = expense.paidById === currentUser.id;
+  const youLogged = !expense.addedBy || expense.addedBy === currentUser.id;
 
   function handleDelete() {
     Alert.alert("Delete Expense", "Are you sure you want to delete this expense?", [
@@ -116,6 +118,20 @@ export default function ExpenseDetailScreen() {
             <Text style={[styles.infoValue, { color: colors.text }]}>
               {expense.category.charAt(0).toUpperCase() + expense.category.slice(1)}
             </Text>
+          </View>
+          <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Logged by</Text>
+            <View style={styles.infoRight}>
+              <Avatar
+                name={loggedByMember?.name ?? currentUser.name}
+                color={loggedByMember?.avatarColor ?? currentUser.avatarColor}
+                size={24}
+              />
+              <Text style={[styles.infoValue, { color: colors.text }]}>
+                {youLogged ? "You" : loggedByMember?.name ?? "Unknown"}
+              </Text>
+            </View>
           </View>
         </View>
 

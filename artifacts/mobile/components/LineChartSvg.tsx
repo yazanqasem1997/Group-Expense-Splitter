@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export type ChartSeries = {
   label: string;
@@ -35,6 +35,8 @@ export function LineChartSvg({
 }: LineChartSvgProps) {
   const cW = Math.max(width - PL - PR, 1);
   const cH = Math.max(height - PT - PB, 1);
+
+  const [tooltip, setTooltip] = useState<{ x: number; items: { label: string; color: string; value: number }[] } | null>(null);
 
   const data = useMemo(() => {
     const all = series.flatMap(s => s.points);
@@ -73,7 +75,32 @@ export function LineChartSvg({
     return `${d.toLocaleString("default", { month: "short" })} ${d.getDate()}`;
   };
 
+  const fmt = (v: number) =>
+    formatY
+      ? formatY(v)
+      : v >= 1000
+      ? `${(v / 1000).toFixed(1)}k`
+      : v.toFixed(0);
+
   const activeSeries = series.filter(s => s.points.length > 0);
+
+  function handlePress(locationX: number) {
+    if (!data) return;
+    const clampedX = Math.max(PL, Math.min(PL + cW, locationX));
+    const ts = data.minX + ((clampedX - PL) / cW) * data.xRange;
+
+    const items = activeSeries.map(s => {
+      const sorted = [...s.points].sort((a, b) => a.timestamp - b.timestamp);
+      let nearest = sorted[0];
+      for (const pt of sorted) {
+        if (Math.abs(pt.timestamp - ts) < Math.abs(nearest.timestamp - ts)) nearest = pt;
+      }
+      return { label: s.label, color: s.color, value: nearest?.value ?? 0 };
+    });
+
+    setTooltip({ x: clampedX, items });
+    setTimeout(() => setTooltip(null), 2200);
+  }
 
   if (activeSeries.length === 0 || !data || width < 2) {
     return (
@@ -83,9 +110,17 @@ export function LineChartSvg({
     );
   }
 
+  const tooltipLeft = tooltip
+    ? Math.min(Math.max(tooltip.x - 60, 0), width - 130)
+    : 0;
+
   return (
     <View>
-      <View style={{ width, height }}>
+      <Pressable
+        onPress={e => handlePress(e.nativeEvent.locationX)}
+        style={{ width, height }}
+      >
+        {/* Grid lines + Y labels */}
         {data.ySteps.map((val, i) => {
           const y = toY(val);
           if (y < 0 || y > height) return null;
@@ -113,16 +148,13 @@ export function LineChartSvg({
                   color: textColor,
                 }}
               >
-                {formatY
-                  ? formatY(val)
-                  : val >= 1000
-                  ? `${(val / 1000).toFixed(0)}k`
-                  : val.toFixed(0)}
+                {fmt(val)}
               </Text>
             </React.Fragment>
           );
         })}
 
+        {/* X tick labels */}
         {data.xTicks.map((ts, i) => {
           const x = toX(ts);
           return (
@@ -143,9 +175,9 @@ export function LineChartSvg({
           );
         })}
 
+        {/* Series lines + dots */}
         {activeSeries.map((s, si) => {
           const sorted = [...s.points].sort((a, b) => a.timestamp - b.timestamp);
-
           return (
             <React.Fragment key={`s${si}`}>
               {sorted.slice(0, -1).map((pt, pi) => {
@@ -175,7 +207,6 @@ export function LineChartSvg({
                   />
                 );
               })}
-
               {sorted.map((pt, pi) => (
                 <View
                   key={`d${pi}`}
@@ -195,8 +226,42 @@ export function LineChartSvg({
             </React.Fragment>
           );
         })}
-      </View>
 
+        {/* Touch hairline */}
+        {tooltip && (
+          <View
+            style={{
+              position: "absolute",
+              left: tooltip.x,
+              top: PT,
+              width: 1.5,
+              height: cH,
+              backgroundColor: textColor,
+              opacity: 0.4,
+            }}
+          />
+        )}
+      </Pressable>
+
+      {/* Tooltip bubble */}
+      {tooltip && (
+        <View
+          style={[
+            styles.tooltip,
+            { left: tooltipLeft },
+          ]}
+        >
+          {tooltip.items.map((item, i) => (
+            <View key={i} style={styles.tooltipRow}>
+              <View style={[styles.tooltipDot, { backgroundColor: item.color }]} />
+              <Text style={styles.tooltipLabel} numberOfLines={1}>{item.label}</Text>
+              <Text style={[styles.tooltipValue, { color: item.color }]}>{fmt(item.value)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Legend */}
       <View style={styles.legend}>
         {activeSeries.map((s, i) => (
           <View key={i} style={styles.legendItem}>
@@ -214,6 +279,31 @@ export function LineChartSvg({
 const styles = StyleSheet.create({
   empty: { alignItems: "center", justifyContent: "center" },
   emptyText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  tooltip: {
+    position: "absolute",
+    top: 0,
+    backgroundColor: "#1C2B3A",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 5,
+    minWidth: 130,
+    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  tooltipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  tooltipDot: { width: 7, height: 7, borderRadius: 4 },
+  tooltipLabel: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: "#B0BEC5",
+  },
+  tooltipValue: { fontSize: 12, fontFamily: "Inter_700Bold" },
   legend: {
     flexDirection: "row",
     flexWrap: "wrap",

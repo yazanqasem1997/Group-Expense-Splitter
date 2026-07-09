@@ -1,8 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Platform,
   Pressable,
@@ -14,11 +16,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
+import { BUILTIN_CATEGORY_CONFIG } from "@/components/CategoryIcon";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { CURRENCY_SYMBOLS, ExpenseCategory, SplitType, useApp } from "@/context/AppContext";
+import { CURRENCY_SYMBOLS, SplitType, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
+import { parseReceipt, suggestCategory } from "@/services/ai";
 
-const CATEGORIES: { value: ExpenseCategory; label: string; icon: string }[] = [
+const BUILTIN_CATEGORIES = [
   { value: "food", label: "Food", icon: "coffee" },
   { value: "transport", label: "Transport", icon: "navigation" },
   { value: "accommodation", label: "Stay", icon: "home" },
@@ -27,7 +31,7 @@ const CATEGORIES: { value: ExpenseCategory; label: string; icon: string }[] = [
   { value: "shopping", label: "Shopping", icon: "shopping-bag" },
   { value: "health", label: "Health", icon: "heart" },
   { value: "other", label: "Other", icon: "more-horizontal" },
-];
+] as const;
 
 const SPLIT_TYPES: { value: SplitType; label: string; desc: string }[] = [
   { value: "equal", label: "Equal", desc: "Split evenly" },
@@ -39,20 +43,47 @@ export default function NewExpenseScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { getGroupById, getMemberById, currentUser, addExpense } = useApp();
+  const {
+    getGroupById,
+    getMemberById,
+    currentUser,
+    addExpense,
+    customCategories,
+    addCustomCategory,
+  } = useApp();
 
   const group = getGroupById(groupId ?? "");
   const [description, setDescription] = useState("");
   const [amountStr, setAmountStr] = useState("");
   const [paidById, setPaidById] = useState(currentUser.id);
-  const [category, setCategory] = useState<ExpenseCategory>("food");
+  const [category, setCategory] = useState<string>("food");
+  const [autoCategory, setAutoCategory] = useState<string | null>(null);
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [exactAmounts, setExactAmounts] = useState<Record<string, string>>({});
   const [percentages, setPercentages] = useState<Record<string, string>>({});
+  const [scanLoading, setScanLoading] = useState(false);
+  const [showAddCat, setShowAddCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const amount = parseFloat(amountStr) || 0;
   const currencySymbol = group ? (CURRENCY_SYMBOLS[group.currency] ?? group.currency + " ") : "$";
+
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    suggestTimer.current = setTimeout(() => {
+      if (description.trim().length >= 3) {
+        const result = suggestCategory(description);
+        if (result.confidence === "high") {
+          setCategory(result.category);
+          setAutoCategory(result.category);
+        }
+      }
+    }, 250);
+    return () => { if (suggestTimer.current) clearTimeout(suggestTimer.current); };
+  }, [description]);
 
   const members = useMemo(
     () =>
@@ -121,6 +152,52 @@ export default function NewExpenseScreen() {
     });
   }
 
+  async function handleScanReceipt() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo access to scan receipts.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+
+    setScanLoading(true);
+    try {
+      const data = await parseReceipt(result.assets[0].uri);
+      if (data.description) {
+        setDescription(data.description);
+        if (data.amount > 0) setAmountStr(data.amount.toString());
+        if (data.category) { setCategory(data.category); setAutoCategory(data.category); }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Alert.alert(
+          "Receipt scanned",
+          "Connect an LLM API in services/ai.ts to automatically extract amount, merchant, and category from photos.",
+          [{ text: "Got it" }]
+        );
+      }
+    } catch {
+      Alert.alert("Scan failed", "Could not read the receipt. Try again.");
+    } finally {
+      setScanLoading(false);
+    }
+  }
+
+  function handleAddCustomCategory() {
+    const name = newCatName.trim();
+    if (!name) return;
+    addCustomCategory(name);
+    setCategory(name.toLowerCase());
+    setAutoCategory(null);
+    setNewCatName("");
+    setShowAddCat(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
   function handleSave() {
     if (!description.trim()) {
       Alert.alert("Description required", "Please enter a description");
@@ -139,7 +216,6 @@ export default function NewExpenseScreen() {
       Alert.alert("Split doesn't balance", msg);
       return;
     }
-
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addExpense({
       groupId: group.id,
@@ -162,6 +238,15 @@ export default function NewExpenseScreen() {
     );
   }
 
+  const allCategories = [
+    ...BUILTIN_CATEGORIES,
+    ...customCategories.map(c => ({
+      value: c,
+      label: c.charAt(0).toUpperCase() + c.slice(1),
+      icon: "tag" as const,
+    })),
+  ];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.headerBg }]}>
@@ -169,9 +254,21 @@ export default function NewExpenseScreen() {
           <Feather name="x" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Add Expense</Text>
-        <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSave}>
-          <Text style={styles.saveBtnText}>Save</Text>
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable
+            style={[styles.scanBtn, { backgroundColor: colors.primaryLight }]}
+            onPress={handleScanReceipt}
+            disabled={scanLoading}
+          >
+            {scanLoading
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Feather name="camera" size={17} color={colors.primary} />
+            }
+          </Pressable>
+          <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSave}>
+            <Text style={styles.saveBtnText}>Save</Text>
+          </Pressable>
+        </View>
       </View>
 
       <KeyboardAwareScrollViewCompat
@@ -194,38 +291,83 @@ export default function NewExpenseScreen() {
           />
         </View>
 
-        <TextInput
-          style={[styles.descriptionInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
-          placeholder="What's this for?"
-          placeholderTextColor={colors.textTertiary}
-          value={description}
-          onChangeText={setDescription}
-        />
+        <View style={styles.descRow}>
+          <TextInput
+            style={[styles.descriptionInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, flex: 1 }]}
+            placeholder="What's this for?"
+            placeholderTextColor={colors.textTertiary}
+            value={description}
+            onChangeText={setDescription}
+          />
+        </View>
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
+        <View style={styles.sectionLabelRow}>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
+          {autoCategory && autoCategory === category && (
+            <View style={[styles.autoBadge, { backgroundColor: colors.primaryLight }]}>
+              <Feather name="zap" size={10} color={colors.primary} />
+              <Text style={[styles.autoBadgeText, { color: colors.primary }]}>Auto</Text>
+            </View>
+          )}
+        </View>
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
-          {CATEGORIES.map(c => (
-            <Pressable
-              key={c.value}
-              style={[
-                styles.catChip,
-                {
-                  backgroundColor: category === c.value ? colors.primary : colors.surface,
-                  borderColor: category === c.value ? colors.primary : colors.border,
-                },
-              ]}
-              onPress={() => setCategory(c.value)}
-            >
-              <Feather
-                name={c.icon as any}
-                size={14}
-                color={category === c.value ? "#fff" : colors.textSecondary}
+          {allCategories.map(c => {
+            const isSelected = category === c.value;
+            const config = BUILTIN_CATEGORY_CONFIG[c.value];
+            return (
+              <Pressable
+                key={c.value}
+                style={[
+                  styles.catChip,
+                  {
+                    backgroundColor: isSelected ? colors.primary : colors.surface,
+                    borderColor: isSelected ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => { setCategory(c.value); setAutoCategory(null); }}
+              >
+                <Feather
+                  name={(config?.icon ?? "tag") as any}
+                  size={14}
+                  color={isSelected ? "#fff" : (config?.color ?? colors.textSecondary)}
+                />
+                <Text style={[styles.catLabel, { color: isSelected ? "#fff" : colors.text }]}>
+                  {c.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+
+          {/* Add custom category */}
+          {showAddCat ? (
+            <View style={[styles.addCatWrap, { borderColor: colors.primary, backgroundColor: colors.primaryLight }]}>
+              <TextInput
+                style={[styles.addCatInput, { color: colors.text }]}
+                placeholder="Category name"
+                placeholderTextColor={colors.textTertiary}
+                value={newCatName}
+                onChangeText={setNewCatName}
+                autoFocus
+                onSubmitEditing={handleAddCustomCategory}
+                returnKeyType="done"
               />
-              <Text style={[styles.catLabel, { color: category === c.value ? "#fff" : colors.text }]}>
-                {c.label}
-              </Text>
+              <Pressable onPress={handleAddCustomCategory}>
+                <Feather name="check" size={16} color={colors.primary} />
+              </Pressable>
+              <Pressable onPress={() => { setShowAddCat(false); setNewCatName(""); }}>
+                <Feather name="x" size={16} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              style={[styles.catChip, { borderColor: colors.border, borderStyle: "dashed", backgroundColor: "transparent" }]}
+              onPress={() => setShowAddCat(true)}
+            >
+              <Feather name="plus" size={14} color={colors.textTertiary} />
+              <Text style={[styles.catLabel, { color: colors.textTertiary }]}>Add</Text>
             </Pressable>
-          ))}
+          )}
         </ScrollView>
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Paid by</Text>
@@ -389,6 +531,14 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  scanBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   saveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   saveBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   content: { padding: 20, gap: 14 },
@@ -402,6 +552,7 @@ const styles = StyleSheet.create({
   },
   currencySymbol: { fontSize: 36, fontFamily: "Inter_700Bold" },
   amountInput: { fontSize: 52, fontFamily: "Inter_700Bold", minWidth: 120, textAlign: "center" },
+  descRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   descriptionInput: {
     height: 52,
     borderRadius: 14,
@@ -410,12 +561,22 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     borderWidth: 1,
   },
+  sectionLabelRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   sectionLabel: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
+  autoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  autoBadgeText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   catRow: { gap: 8, paddingVertical: 4 },
   catChip: {
     flexDirection: "row",
@@ -427,6 +588,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   catLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  addCatWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+  },
+  addCatInput: { fontSize: 13, fontFamily: "Inter_400Regular", minWidth: 90 },
   paidByRow: { gap: 8, paddingVertical: 4 },
   paidByChip: {
     flexDirection: "row",
