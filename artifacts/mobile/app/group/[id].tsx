@@ -80,8 +80,15 @@ export default function GroupDetailScreen() {
       `Open SplitEasy and accept the invite from ${currentUser.name}!\n\n— ${currentUser.name}`
     );
     const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
-    const canOpen = await Linking.canOpenURL(mailtoUrl);
-    if (canOpen) Linking.openURL(mailtoUrl);
+    try {
+      await Linking.openURL(mailtoUrl);
+    } catch {
+      Alert.alert(
+        "Couldn't open mail app",
+        `Send a manual invite to:\n${email}`,
+        [{ text: "OK" }]
+      );
+    }
 
     setInviteEmail(""); setInviteName(""); setInviteError("");
     setInviteSent(true);
@@ -200,10 +207,9 @@ export default function GroupDetailScreen() {
       `— ${currentUser.name}`
     );
     const url = `mailto:${recipientEmail}?subject=${subject}&body=${body}`;
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      Linking.openURL(url);
-    } else {
+    try {
+      await Linking.openURL(url);
+    } catch {
       Alert.alert("Can't open mail app", `Send a reminder to ${recipientEmail}`);
     }
   }
