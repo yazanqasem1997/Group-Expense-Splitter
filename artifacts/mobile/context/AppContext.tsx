@@ -2,11 +2,27 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useToast } from "@/context/ToastContext";
 
-export type Currency = "USD" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR" | "AED";
+export type Currency =
+  | "USD" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR" | "AED"
+  | "CHF" | "SEK" | "NOK" | "DKK" | "NZD" | "SGD" | "HKD" | "MXN"
+  | "BRL" | "CNY" | "ZAR" | "TRY" | "KRW" | "THB" | "IDR" | "MYR"
+  | "PHP" | "SAR" | "QAR" | "KWD" | "ILS" | "EGP" | "NGN" | "KES"
+  | "MAD" | "COP" | "CLP" | "ARS" | "PEN" | "PKR" | "BDT" | "TWD"
+  | "HUF" | "PLN" | "CZK" | "RON" | "BGN" | "HRK" | "RUB" | "UAH"
+  | "VND" | "MMK" | "LKR" | "GHS" | "XOF" | "XAF" | "OMR" | "BHD";
 
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
-  USD: "$", EUR: "€", GBP: "£", CAD: "CA$", AUD: "A$",
-  JPY: "¥", INR: "₹", AED: "AED ",
+  USD: "$",     EUR: "€",     GBP: "£",     CAD: "CA$",   AUD: "A$",
+  JPY: "¥",     INR: "₹",     AED: "AED ",  CHF: "CHF ",  SEK: "kr ",
+  NOK: "kr ",   DKK: "kr ",   NZD: "NZ$",   SGD: "S$",    HKD: "HK$",
+  MXN: "MX$",   BRL: "R$",    CNY: "¥",     ZAR: "R ",    TRY: "₺",
+  KRW: "₩",     THB: "฿",     IDR: "Rp ",   MYR: "RM ",   PHP: "₱",
+  SAR: "SAR ",  QAR: "QAR ",  KWD: "KD ",   ILS: "₪",     EGP: "E£",
+  NGN: "₦",     KES: "KSh ",  MAD: "MAD ",  COP: "COP$",  CLP: "CLP$",
+  ARS: "ARS$",  PEN: "S/.",   PKR: "₨",     BDT: "৳",     TWD: "NT$",
+  HUF: "Ft ",   PLN: "zł ",   CZK: "Kč ",   RON: "lei ",  BGN: "лв ",
+  HRK: "kn ",   RUB: "₽",     UAH: "₴",     VND: "₫",     MMK: "K ",
+  LKR: "Rs ",   GHS: "GH₵",   XOF: "CFA ",  XAF: "CFA ",  OMR: "OMR ", BHD: "BD ",
 };
 
 export function formatAmount(amount: number, currency: Currency): string {
