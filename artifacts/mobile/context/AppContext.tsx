@@ -18,6 +18,7 @@ export interface Member {
   name: string;
   email?: string;
   avatarColor: string;
+  photo?: string;
   isCurrentUser?: boolean;
   isPending?: boolean;
 }

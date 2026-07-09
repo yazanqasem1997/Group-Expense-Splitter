@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 
 interface AvatarProps {
   name: string;
@@ -7,9 +7,10 @@ interface AvatarProps {
   size?: number;
   fontSize?: number;
   style?: object;
+  imageUri?: string;
 }
 
-export function Avatar({ name, color, size = 40, fontSize, style }: AvatarProps) {
+export function Avatar({ name, color, size = 40, fontSize, style, imageUri }: AvatarProps) {
   const initials = name
     .split(" ")
     .map(n => n[0])
@@ -18,6 +19,24 @@ export function Avatar({ name, color, size = 40, fontSize, style }: AvatarProps)
     .toUpperCase();
 
   const computedFontSize = fontSize ?? Math.max(size * 0.36, 10);
+
+  if (imageUri) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { width: size, height: size, borderRadius: size / 2, backgroundColor: color },
+          style,
+        ]}
+      >
+        <Image
+          source={{ uri: imageUri }}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }
 
   return (
     <View
@@ -36,6 +55,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   text: {
     color: "#FFFFFF",

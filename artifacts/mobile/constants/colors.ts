@@ -1,4 +1,50 @@
-export default {
+export type AccentId = "ocean" | "teal" | "violet" | "sunset" | "forest" | "rose";
+
+export const ACCENT_META: Record<AccentId, { label: string; lightPrimary: string; darkPrimary: string }> = {
+  ocean:  { label: "Ocean",  lightPrimary: "#1763A6", darkPrimary: "#4B9FE0" },
+  teal:   { label: "Teal",   lightPrimary: "#0D9488", darkPrimary: "#2DD4BF" },
+  violet: { label: "Violet", lightPrimary: "#7C3AED", darkPrimary: "#A78BFA" },
+  sunset: { label: "Sunset", lightPrimary: "#EA580C", darkPrimary: "#FB923C" },
+  forest: { label: "Forest", lightPrimary: "#059669", darkPrimary: "#34D399" },
+  rose:   { label: "Rose",   lightPrimary: "#E11D48", darkPrimary: "#FB7185" },
+};
+
+type AccentOverride = {
+  primary: string;
+  primaryDark: string;
+  primaryLight: string;
+  tint: string;
+  tabIconSelected: string;
+};
+
+export const ACCENTS: Record<AccentId, { light: AccentOverride; dark: AccentOverride }> = {
+  ocean: {
+    light: { primary: "#1763A6", primaryDark: "#0B3C66", primaryLight: "#E8F1FA", tint: "#1763A6", tabIconSelected: "#1763A6" },
+    dark:  { primary: "#4B9FE0", primaryDark: "#1763A6", primaryLight: "#0C1E33", tint: "#4B9FE0", tabIconSelected: "#4B9FE0" },
+  },
+  teal: {
+    light: { primary: "#0D9488", primaryDark: "#0F766E", primaryLight: "#F0FDFA", tint: "#0D9488", tabIconSelected: "#0D9488" },
+    dark:  { primary: "#2DD4BF", primaryDark: "#0D9488", primaryLight: "#042F2E", tint: "#2DD4BF", tabIconSelected: "#2DD4BF" },
+  },
+  violet: {
+    light: { primary: "#7C3AED", primaryDark: "#5B21B6", primaryLight: "#EDE9FE", tint: "#7C3AED", tabIconSelected: "#7C3AED" },
+    dark:  { primary: "#A78BFA", primaryDark: "#7C3AED", primaryLight: "#1E1037", tint: "#A78BFA", tabIconSelected: "#A78BFA" },
+  },
+  sunset: {
+    light: { primary: "#EA580C", primaryDark: "#C2410C", primaryLight: "#FFF7ED", tint: "#EA580C", tabIconSelected: "#EA580C" },
+    dark:  { primary: "#FB923C", primaryDark: "#EA580C", primaryLight: "#1C0900", tint: "#FB923C", tabIconSelected: "#FB923C" },
+  },
+  forest: {
+    light: { primary: "#059669", primaryDark: "#047857", primaryLight: "#ECFDF5", tint: "#059669", tabIconSelected: "#059669" },
+    dark:  { primary: "#34D399", primaryDark: "#059669", primaryLight: "#022C22", tint: "#34D399", tabIconSelected: "#34D399" },
+  },
+  rose: {
+    light: { primary: "#E11D48", primaryDark: "#BE123C", primaryLight: "#FFF1F2", tint: "#E11D48", tabIconSelected: "#E11D48" },
+    dark:  { primary: "#FB7185", primaryDark: "#E11D48", primaryLight: "#1F0010", tint: "#FB7185", tabIconSelected: "#FB7185" },
+  },
+};
+
+const base = {
   light: {
     text: "#16202C",
     textSecondary: "#6B7785",
@@ -7,6 +53,7 @@ export default {
     surface: "#FFFFFF",
     surfaceElevated: "#FFFFFF",
     border: "#E2E8EF",
+    switchOff: "#CBD5E1",
     primary: "#1763A6",
     primaryDark: "#0B3C66",
     primaryLight: "#E8F1FA",
@@ -54,6 +101,7 @@ export default {
     surface: "#152035",
     surfaceElevated: "#1C2B44",
     border: "#253650",
+    switchOff: "#374151",
     primary: "#4B9FE0",
     primaryDark: "#1763A6",
     primaryLight: "#0C1E33",
@@ -94,3 +142,5 @@ export default {
     ],
   },
 };
+
+export default base;
