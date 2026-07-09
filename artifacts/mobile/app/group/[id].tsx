@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -59,17 +60,33 @@ export default function GroupDetailScreen() {
   const debts = useMemo(() => getGroupBalances(id), [id, getGroupBalances]);
   const pendingInvites = useMemo(() => getGroupPendingInvites(id), [id, getGroupPendingInvites]);
 
-  function handleSendInvite() {
+  async function handleSendInvite() {
     const email = inviteEmail.trim();
     if (!email) { setInviteError("Email is required"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setInviteError("Enter a valid email"); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     sendGroupInvite(id, email, inviteName.trim() || undefined);
+
+    const recipientName = inviteName.trim() || "there";
+    const subject = encodeURIComponent(`Join me on SplitEasy — "${group?.name}"`);
+    const body = encodeURIComponent(
+      `Hi ${recipientName},\n\n` +
+      `${currentUser.name} has invited you to the "${group?.name}" group on SplitEasy — ` +
+      `an easy way to split expenses and track who owes what.\n\n` +
+      `Open SplitEasy and accept the invite from ${currentUser.name} to get started!\n\n` +
+      `— ${currentUser.name}`
+    );
+    const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
+    const canOpen = await Linking.canOpenURL(mailtoUrl);
+    if (canOpen) {
+      Linking.openURL(mailtoUrl);
+    }
+
     setInviteEmail("");
     setInviteName("");
     setInviteError("");
     setInviteSent(true);
-    setTimeout(() => { setInviteSent(false); setShowInviteForm(false); }, 1800);
+    setTimeout(() => { setInviteSent(false); setShowInviteForm(false); }, 2000);
   }
 
   const chartSeries: ChartSeries[] = useMemo(() => {
