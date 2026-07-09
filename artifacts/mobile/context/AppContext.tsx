@@ -119,6 +119,7 @@ interface AppContextType {
   ratesUpdated: string | null;
   fetchExchangeRates: () => Promise<void>;
   convertCurrency: (amount: number, from: Currency) => number;
+  convertAmount: (amount: number, from: Currency, to: Currency) => number;
   simplifyDebtsEnabled: boolean;
   toggleSimplifyDebts: () => void;
   updateCurrentUser: (updates: Partial<Omit<Member, "id" | "isCurrentUser">>) => void;
@@ -393,6 +394,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const { rates, updated } = JSON.parse(ratesStored);
         setExchangeRates(rates);
         setRatesUpdated(updated);
+        const ageMs = Date.now() - new Date(updated).getTime();
+        if (ageMs > 24 * 60 * 60 * 1000) fetchExchangeRates();
+      } else {
+        fetchExchangeRates();
       }
     } catch (e) {
     } finally {
@@ -412,7 +417,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  useEffect(() => { fetchExchangeRates(); }, []);
+  const convertAmount = useCallback(
+    (amount: number, from: Currency, to: Currency): number => {
+      if (from === to) return amount;
+      if (Object.keys(exchangeRates).length === 0) return amount;
+      const inUSD = from === "USD" ? amount : amount / (exchangeRates[from] ?? 1);
+      return to === "USD" ? inUSD : inUSD * (exchangeRates[to] ?? 1);
+    },
+    [exchangeRates]
+  );
 
   const convertCurrency = useCallback(
     (amount: number, from: Currency): number => {
@@ -751,6 +764,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ratesUpdated,
         fetchExchangeRates,
         convertCurrency,
+        convertAmount,
         updateCurrentUser,
         currentUser,
         members,

@@ -11,11 +11,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
-import { CURRENCY_SYMBOLS, useApp } from "@/context/AppContext";
+import { Currency, CURRENCY_SYMBOLS, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 
 type Period = "7D" | "1M" | "3M" | "All";
-
 const PERIODS: Period[] = ["7D", "1M", "3M", "All"];
 
 function periodMs(period: Period): number | null {
@@ -28,13 +27,23 @@ export default function AnalyticsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { expenses, groups, currentUser } = useApp();
+  const {
+    expenses,
+    groups,
+    currentUser,
+    defaultCurrency,
+    convertAmount,
+    exchangeRates,
+  } = useApp();
 
   const [period, setPeriod] = useState<Period>("1M");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
+  const [displayCurrency, setDisplayCurrency] = useState<Currency | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const chartWidth = width - 32;
+
+  const activeCurrency: Currency = displayCurrency ?? defaultCurrency;
 
   const filteredExpenses = useMemo(() => {
     const cutoff = periodMs(period);
@@ -46,17 +55,38 @@ export default function AnalyticsScreen() {
     });
   }, [expenses, period, selectedGroupId]);
 
+  const hasRates = Object.keys(exchangeRates).length > 0;
+
+  function toDisplay(amount: number, groupId: string): number {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return amount;
+    if (!hasRates) return amount;
+    return convertAmount(amount, group.currency, activeCurrency);
+  }
+
   const myExpenses = useMemo(
     () => filteredExpenses.filter(e => e.paidById === currentUser.id),
     [filteredExpenses, currentUser]
   );
 
-  const totalSpent = myExpenses.reduce((s, e) => s + e.amount, 0);
-  const totalGroup = filteredExpenses.reduce((s, e) => s + e.amount, 0);
-  const myShareTotal = filteredExpenses.reduce((s, e) => {
-    const split = e.splits.find(sp => sp.memberId === currentUser.id);
-    return s + (split?.amount ?? 0);
-  }, 0);
+  const totalSpent = useMemo(
+    () => myExpenses.reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0),
+    [myExpenses, activeCurrency, hasRates]
+  );
+
+  const totalGroup = useMemo(
+    () => filteredExpenses.reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0),
+    [filteredExpenses, activeCurrency, hasRates]
+  );
+
+  const myShareTotal = useMemo(
+    () =>
+      filteredExpenses.reduce((s, e) => {
+        const split = e.splits.find(sp => sp.memberId === currentUser.id);
+        return s + toDisplay(split?.amount ?? 0, e.groupId);
+      }, 0),
+    [filteredExpenses, currentUser, activeCurrency, hasRates]
+  );
 
   const chartSeries: ChartSeries[] = useMemo(() => {
     const sorted = [...myExpenses].sort(
@@ -64,22 +94,22 @@ export default function AnalyticsScreen() {
     );
     let cum = 0;
     const points = sorted.map(e => {
-      cum += e.amount;
+      cum += toDisplay(e.amount, e.groupId);
       return { timestamp: new Date(e.createdAt).getTime(), value: cum };
     });
     if (points.length === 0) return [];
     return [{ label: "Amount paid by you", color: colors.primary, points }];
-  }, [myExpenses, colors.primary]);
+  }, [myExpenses, activeCurrency, hasRates, colors.primary]);
 
   const categoryTotals = useMemo(() => {
     const map: Record<string, number> = {};
     myExpenses.forEach(e => {
-      map[e.category] = (map[e.category] ?? 0) + e.amount;
+      map[e.category] = (map[e.category] ?? 0) + toDisplay(e.amount, e.groupId);
     });
     return Object.keys(map)
       .map(cat => ({ cat, total: map[cat] }))
       .sort((a, b) => b.total - a.total);
-  }, [myExpenses]);
+  }, [myExpenses, activeCurrency, hasRates]);
 
   const CATEGORY_COLORS: Record<string, string> = {
     food: colors.accent,
@@ -92,8 +122,16 @@ export default function AnalyticsScreen() {
     other: colors.textTertiary,
   };
 
-  const selectedGroup = selectedGroupId !== "all" ? groups.find(g => g.id === selectedGroupId) : null;
-  const currencySymbol = selectedGroup ? CURRENCY_SYMBOLS[selectedGroup.currency] : "$";
+  const sym = CURRENCY_SYMBOLS[activeCurrency] ?? "$";
+
+  const availableCurrencies = useMemo(() => {
+    const set = new Set<Currency>();
+    set.add(defaultCurrency);
+    groups.forEach(g => set.add(g.currency));
+    return [...set];
+  }, [groups, defaultCurrency]);
+
+  const showCurrencyPicker = availableCurrencies.length > 1;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -178,6 +216,37 @@ export default function AnalyticsScreen() {
           ))}
         </View>
 
+        {/* Currency toggle */}
+        {showCurrencyPicker && (
+          <View style={[styles.currencyRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Feather name="globe" size={13} color={colors.textTertiary} />
+            <Text style={[styles.currencyLabel, { color: colors.textTertiary }]}>View in</Text>
+            {availableCurrencies.map(c => {
+              const active = c === activeCurrency;
+              return (
+                <Pressable
+                  key={c}
+                  style={[
+                    styles.currencyChip,
+                    {
+                      backgroundColor: active ? colors.primary : colors.background,
+                      borderColor: active ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setDisplayCurrency(c)}
+                >
+                  <Text style={[styles.currencyChipText, { color: active ? "#fff" : colors.textSecondary }]}>
+                    {CURRENCY_SYMBOLS[c]}{c}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {!hasRates && (
+              <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>· rates offline</Text>
+            )}
+          </View>
+        )}
+
         {/* Summary cards */}
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
@@ -186,7 +255,7 @@ export default function AnalyticsScreen() {
             </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>You paid</Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {currencySymbol}{totalSpent.toFixed(0)}
+              {sym}{totalSpent.toFixed(0)}
             </Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
@@ -195,7 +264,7 @@ export default function AnalyticsScreen() {
             </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Your share</Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {currencySymbol}{myShareTotal.toFixed(0)}
+              {sym}{myShareTotal.toFixed(0)}
             </Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
@@ -204,7 +273,7 @@ export default function AnalyticsScreen() {
             </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Group total</Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {currencySymbol}{totalGroup.toFixed(0)}
+              {sym}{totalGroup.toFixed(0)}
             </Text>
           </View>
         </View>
@@ -219,7 +288,7 @@ export default function AnalyticsScreen() {
             series={chartSeries}
             width={chartWidth - 32}
             height={200}
-            formatY={v => `${currencySymbol}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0)}`}
+            formatY={v => `${sym}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0)}`}
             textColor={colors.textTertiary}
             gridColor={colors.border}
             legendTextColor={colors.textSecondary}
@@ -248,7 +317,7 @@ export default function AnalyticsScreen() {
                     <View style={[styles.catBarBg, { backgroundColor: colors.border }]} />
                   </View>
                   <Text style={[styles.catValue, { color: colors.textSecondary }]}>
-                    {currencySymbol}{total.toFixed(0)}
+                    {sym}{total.toFixed(0)}
                   </Text>
                 </View>
               );
@@ -298,6 +367,25 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   periodText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  currencyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  currencyLabel: { fontSize: 12, fontFamily: "Inter_500Medium", marginRight: 2 },
+  currencyChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  currencyChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  ratesNote: { fontSize: 11, fontFamily: "Inter_400Regular", marginLeft: 2 },
   summaryRow: {
     flexDirection: "row",
     marginHorizontal: 16,
