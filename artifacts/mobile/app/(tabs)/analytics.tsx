@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
 import { Currency, CURRENCY_SYMBOLS, useApp } from "@/context/AppContext";
@@ -36,6 +37,8 @@ export default function AnalyticsScreen() {
     checkAndAddRecurring, fetchExchangeRates,
   } = useApp();
 
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -229,6 +232,7 @@ export default function AnalyticsScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
         refreshControl={

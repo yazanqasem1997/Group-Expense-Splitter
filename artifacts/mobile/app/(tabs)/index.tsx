@@ -15,6 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -270,6 +271,8 @@ export default function GroupsScreen() {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const [sortBy, setSortBy] = useState<"balance" | "name" | "recent">("balance");
+  const listRef = useRef<FlatList>(null);
+  useScrollToTop(listRef);
   const searchRef = useRef<TextInput>(null);
 
   const archivedGroups = groups.filter(g => g.isArchived);
@@ -375,6 +378,7 @@ export default function GroupsScreen() {
       </View>
 
       <FlatList
+        ref={listRef}
         data={filteredGroups}
         keyExtractor={item => item.id}
         contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 100 }]}
