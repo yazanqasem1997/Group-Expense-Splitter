@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Platform,
@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useScrollToTop } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -30,7 +30,12 @@ export default function FriendsScreen() {
   const { members, currentUser, getGroupBalances, groups, addMember, checkAndAddRecurring, fetchExchangeRates } = useApp();
 
   const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
+  const navigation = useNavigation();
+  useEffect(() => {
+    return navigation.addListener("tabPress" as any, () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  }, [navigation]);
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

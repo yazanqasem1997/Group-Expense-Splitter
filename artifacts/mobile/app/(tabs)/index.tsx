@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Modal,
@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useScrollToTop } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -272,7 +272,12 @@ export default function GroupsScreen() {
   const [showSort, setShowSort] = useState(false);
   const [sortBy, setSortBy] = useState<"balance" | "name" | "recent">("balance");
   const listRef = useRef<FlatList>(null);
-  useScrollToTop(listRef);
+  const navigation = useNavigation();
+  useEffect(() => {
+    return navigation.addListener("tabPress" as any, () => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+  }, [navigation]);
   const searchRef = useRef<TextInput>(null);
 
   const archivedGroups = groups.filter(g => g.isArchived);
