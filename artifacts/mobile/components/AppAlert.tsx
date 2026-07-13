@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -19,7 +18,7 @@ export function AppAlert() {
 
   useEffect(() => {
     const unsub = subscribeAlert(setConfig);
-    return () => unsub();
+    return () => { unsub(); };
   }, []);
 
   const dismiss = useCallback(() => {
@@ -34,31 +33,23 @@ export function AppAlert() {
     [dismiss]
   );
 
-  const cancelButton = config?.buttons.find(b => b.style === "cancel");
-  const hasCancelButton = !!cancelButton;
+  if (!config) return null;
 
-  const stacked = (config?.buttons.length ?? 0) > 2;
+  const hasCancelButton = config.buttons.some(b => b.style === "cancel");
+  const stacked = config.buttons.length > 2;
 
   return (
-    <Modal
-      visible={!!config}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={() => hasCancelButton && dismiss()}
-    >
+    <View style={styles.root} pointerEvents="box-none">
       <Pressable
         style={styles.overlay}
         onPress={() => hasCancelButton && dismiss()}
-      >
-        <Pressable
-          style={[styles.card, { backgroundColor: colors.surface }]}
-          onPress={e => e.stopPropagation()}
-        >
+      />
+      <View style={styles.cardWrap} pointerEvents="box-none">
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <Text style={[styles.title, { color: colors.text }]}>
-            {config?.title}
+            {config.title}
           </Text>
-          {!!config?.message && (
+          {!!config.message && (
             <Text style={[styles.message, { color: colors.textSecondary }]}>
               {config.message}
             </Text>
@@ -71,7 +62,7 @@ export function AppAlert() {
               { borderTopColor: colors.border },
             ]}
           >
-            {config?.buttons.map((btn, i) => {
+            {config.buttons.map((btn, i) => {
               const isDestructive = btn.style === "destructive";
               const isCancel = btn.style === "cancel";
               const isLast = i === config.buttons.length - 1;
@@ -114,16 +105,24 @@ export function AppAlert() {
               );
             })}
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 99,
+  },
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  cardWrap: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
     padding: 32,
