@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+
   Platform,
   Pressable,
   ScrollView,
@@ -19,6 +19,7 @@ import { Avatar } from "@/components/Avatar";
 import { BUILTIN_CATEGORY_CONFIG } from "@/components/CategoryIcon";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { CURRENCY_SYMBOLS, SplitType, useApp } from "@/context/AppContext";
+import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { parseReceipt, suggestCategory } from "@/services/ai";
 
@@ -176,14 +177,14 @@ export default function NewExpenseScreen() {
         if (data.category) { setCategory(data.category); setAutoCategory(data.category); }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        Alert.alert(
+        showAlert(
           "Receipt scanned",
           "Connect an LLM API in services/ai.ts to automatically extract amount, merchant, and category from photos.",
           [{ text: "Got it" }]
         );
       }
     } catch {
-      Alert.alert("Scan failed", "Could not read the receipt. Try again.");
+      showAlert("Scan failed", "Could not read the receipt. Try again.");
     } finally {
       setScanLoading(false);
     }
@@ -192,7 +193,7 @@ export default function NewExpenseScreen() {
   async function pickFromLibrary() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow photo library access to scan receipts.");
+      showAlert("Permission needed", "Allow photo library access to scan receipts.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -206,7 +207,7 @@ export default function NewExpenseScreen() {
   async function pickFromCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow camera access to take a receipt photo.");
+      showAlert("Permission needed", "Allow camera access to take a receipt photo.");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -218,7 +219,7 @@ export default function NewExpenseScreen() {
   }
 
   function handleScanReceipt() {
-    Alert.alert("Scan Receipt", "How would you like to add a photo?", [
+    showAlert("Scan Receipt", "How would you like to add a photo?", [
       { text: "Take Photo", onPress: pickFromCamera },
       { text: "Choose from Library", onPress: pickFromLibrary },
       { text: "Cancel", style: "cancel" },
@@ -238,11 +239,11 @@ export default function NewExpenseScreen() {
 
   function handleSave() {
     if (!description.trim()) {
-      Alert.alert("Description required", "Please enter a description");
+      showAlert("Description required", "Please enter a description");
       return;
     }
     if (amount <= 0) {
-      Alert.alert("Amount required", "Please enter a valid amount");
+      showAlert("Amount required", "Please enter a valid amount");
       return;
     }
     if (!group) return;
@@ -251,7 +252,7 @@ export default function NewExpenseScreen() {
         splitType === "exact"
           ? `Amounts must add up to ${currencySymbol}${amount.toFixed(2)}`
           : "Percentages must add up to 100%";
-      Alert.alert("Split doesn't balance", msg);
+      showAlert("Split doesn't balance", msg);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

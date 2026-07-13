@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useRef, useState } from "react";
 import {
-  Alert,
+
   FlatList,
   KeyboardAvoidingView,
   Linking,
@@ -24,6 +24,7 @@ import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
 import { Expense, GroupMessage, useApp } from "@/context/AppContext";
+import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
@@ -84,7 +85,7 @@ export default function GroupDetailScreen() {
     try {
       await Linking.openURL(mailtoUrl);
     } catch {
-      Alert.alert(
+      showAlert(
         "Couldn't open mail app",
         `Send a manual invite to:\n${email}`,
         [{ text: "OK" }]
@@ -132,7 +133,7 @@ export default function GroupDetailScreen() {
   function handleGroupOptions() {
     if (!group) return;
     const archiveLabel = group.isArchived ? "Unarchive Group" : "Archive Group";
-    Alert.alert(group.name, "Group options", [
+    showAlert(group.name, "Group options", [
       {
         text: "Add Expense",
         onPress: () => router.push({ pathname: "/expense/new", params: { groupId: id } }),
@@ -158,7 +159,7 @@ export default function GroupDetailScreen() {
   }
 
   function handleDeleteGroup() {
-    Alert.alert("Delete Group", "This will delete all expenses in this group. Continue?", [
+    showAlert("Delete Group", "This will delete all expenses in this group. Continue?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -216,7 +217,7 @@ export default function GroupDetailScreen() {
     const recipientEmail = isMyDebt ? toMember?.email : fromMember?.email;
 
     if (!recipientEmail) {
-      Alert.alert("No email", "This member doesn't have an email address on file.");
+      showAlert("No email", "This member doesn't have an email address on file.");
       return;
     }
 
@@ -231,7 +232,7 @@ export default function GroupDetailScreen() {
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert("Can't open mail app", `Send a reminder to ${recipientEmail}`);
+      showAlert("Can't open mail app", `Send a reminder to ${recipientEmail}`);
     }
   }
 

@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
-  Alert,
+
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,6 +18,7 @@ import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { ExpenseComment, useApp } from "@/context/AppContext";
+import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { formatDate, timeAgo } from "@/utils/format";
 
@@ -59,7 +60,7 @@ export default function ExpenseDetailScreen() {
   const totalReactions = Object.values(reactions).reduce((s, ids) => s + ids.length, 0);
 
   function handleDelete() {
-    Alert.alert("Delete Expense", "Are you sure you want to delete this expense?", [
+    showAlert("Delete Expense", "Are you sure you want to delete this expense?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
