@@ -13,8 +13,37 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Path, Stop } from "react-native-svg";
 
 const AUTH_KEY = "@spliteasy_logged_in";
+
+function ForkIcon({ size = 64 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 64 64">
+      <Defs>
+        <SvgGradient id="stem" x1="32" y1="48" x2="32" y2="24" gradientUnits="userSpaceOnUse">
+          <Stop offset="0" stopColor="#8BBAD4" />
+          <Stop offset="1" stopColor="#2B7BE0" />
+        </SvgGradient>
+        <SvgGradient id="lb" x1="32" y1="24" x2="14" y2="8" gradientUnits="userSpaceOnUse">
+          <Stop offset="0" stopColor="#2B7BE0" />
+          <Stop offset="1" stopColor="#1A6FD8" />
+        </SvgGradient>
+        <SvgGradient id="rb" x1="32" y1="24" x2="50" y2="8" gradientUnits="userSpaceOnUse">
+          <Stop offset="0" stopColor="#18C4AC" />
+          <Stop offset="1" stopColor="#14B09A" />
+        </SvgGradient>
+      </Defs>
+      <Path d="M32 48 L32 26" stroke="url(#stem)" strokeWidth="4.5" strokeLinecap="round" />
+      <Path d="M32 26 Q32 20 14 10" stroke="url(#lb)" strokeWidth="4.5" strokeLinecap="round" fill="none" />
+      <Path d="M32 26 Q32 20 50 10" stroke="url(#rb)" strokeWidth="4.5" strokeLinecap="round" fill="none" />
+      <Circle cx="14" cy="9" r="5.5" fill="#2B7BE0" />
+      <Circle cx="50" cy="9" r="5.5" fill="#18C4AC" />
+      <Circle cx="32" cy="50" r="4" fill="#7AAAC8" />
+      <Circle cx="32" cy="26" r="3" fill="#7AAAC8" opacity="0.7" />
+    </Svg>
+  );
+}
 
 function GoogleIcon() {
   return (
@@ -87,7 +116,7 @@ export default function LandingScreen() {
         <Animated.View style={{ opacity: logoOpacity, transform: [{ scale: logoScale }] }}>
           <View style={styles.logoContainer}>
             <View style={styles.logoBadge}>
-              <Feather name="git-branch" size={54} color="#2B7BE0" />
+              <ForkIcon size={64} />
             </View>
             <View style={styles.logoGlow} />
           </View>
