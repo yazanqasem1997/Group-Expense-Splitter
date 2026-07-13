@@ -18,7 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
@@ -178,12 +178,12 @@ export default function AccountScreen() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
   const scrollRef = useRef<ScrollView>(null);
-  const navigation = useNavigation();
   useEffect(() => {
-    return navigation.addListener("tabPress" as any, () => {
+    scrollRegistry.register("account", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     });
-  }, [navigation]);
+    return () => scrollRegistry.unregister("account");
+  }, []);
   const nameInputRef = useRef<TextInput>(null);
   const [expandedNotifCats, setExpandedNotifCats] = useState<string[]>([]);
 

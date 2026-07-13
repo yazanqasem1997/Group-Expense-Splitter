@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -272,12 +272,12 @@ export default function GroupsScreen() {
   const [showSort, setShowSort] = useState(false);
   const [sortBy, setSortBy] = useState<"balance" | "name" | "recent" | "activity">("balance");
   const listRef = useRef<FlatList>(null);
-  const navigation = useNavigation();
   useEffect(() => {
-    return navigation.addListener("tabPress" as any, () => {
+    scrollRegistry.register("index", () => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
-  }, [navigation]);
+    return () => scrollRegistry.unregister("index");
+  }, []);
   const searchRef = useRef<TextInput>(null);
 
   const archivedGroups = groups.filter(g => g.isArchived);

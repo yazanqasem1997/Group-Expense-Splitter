@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -30,12 +30,12 @@ export default function FriendsScreen() {
   const { members, currentUser, getGroupBalances, groups, addMember, checkAndAddRecurring, fetchExchangeRates } = useApp();
 
   const scrollRef = useRef<ScrollView>(null);
-  const navigation = useNavigation();
   useEffect(() => {
-    return navigation.addListener("tabPress" as any, () => {
+    scrollRegistry.register("friends", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     });
-  }, [navigation]);
+    return () => scrollRegistry.unregister("friends");
+  }, []);
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
