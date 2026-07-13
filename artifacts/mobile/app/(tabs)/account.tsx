@@ -552,31 +552,34 @@ export default function AccountScreen() {
       </View>
 
       {/* Sign Out */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.signOutBtn,
-          { backgroundColor: colors.surface, shadowColor: colors.shadow, opacity: pressed ? 0.8 : 1 },
-        ]}
-        onPress={() => {
-          Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Sign Out",
-              style: "destructive",
-              onPress: async () => {
-                await AsyncStorage.removeItem("@spliteasy_logged_in");
-                router.replace("/");
+      <SectionTitle label="Account" />
+      <View style={[styles.section, { shadowColor: colors.shadow }]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.row,
+            { backgroundColor: colors.surface, opacity: pressed ? 0.8 : 1 },
+          ]}
+          onPress={() => {
+            Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Sign Out",
+                style: "destructive",
+                onPress: async () => {
+                  await AsyncStorage.removeItem("@spliteasy_logged_in");
+                  router.replace("/");
+                },
               },
-            },
-          ]);
-        }}
-      >
-        <View style={[styles.rowIcon, { backgroundColor: "#FDECEA" }]}>
-          <Feather name="log-out" size={18} color="#E53935" />
-        </View>
-        <Text style={[styles.rowLabel, { color: "#E53935", flex: 1 }]}>Sign Out</Text>
-        <Feather name="chevron-right" size={16} color="#E5393560" />
-      </Pressable>
+            ]);
+          }}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: "#FDECEA" }]}>
+            <Feather name="log-out" size={18} color="#E53935" />
+          </View>
+          <Text style={[styles.rowLabel, { color: "#E53935", flex: 1 }]}>Sign Out</Text>
+          <Feather name="chevron-right" size={16} color="#E5393580" />
+        </Pressable>
+      </View>
 
       <Text style={[styles.version, { color: colors.textTertiary }]}>SplitEasy v1.0.0</Text>
 
@@ -801,19 +804,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   refreshBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  signOutBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    height: 52,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
   version: { textAlign: "center", fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 8 },
   modalOverlay: {
     flex: 1,
