@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -49,12 +49,12 @@ export default function ActivityScreen() {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const listRef = useRef<FlatList>(null);
-  const navigation = useNavigation();
   useEffect(() => {
-    return navigation.addListener("tabPress" as any, () => {
+    scrollRegistry.register("activity", () => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
-  }, [navigation]);
+    return () => scrollRegistry.unregister("activity");
+  }, []);
   const searchRef = useRef<TextInput>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;

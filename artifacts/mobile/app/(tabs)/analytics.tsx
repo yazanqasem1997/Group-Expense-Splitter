@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
 import { Currency, CURRENCY_SYMBOLS, useApp } from "@/context/AppContext";
@@ -38,12 +38,12 @@ export default function AnalyticsScreen() {
   } = useApp();
 
   const scrollRef = useRef<ScrollView>(null);
-  const navigation = useNavigation();
   useEffect(() => {
-    return navigation.addListener("tabPress" as any, () => {
+    scrollRegistry.register("analytics", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     });
-  }, [navigation]);
+    return () => scrollRegistry.unregister("analytics");
+  }, []);
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

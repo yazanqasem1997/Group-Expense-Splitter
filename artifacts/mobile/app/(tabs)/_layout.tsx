@@ -7,30 +7,33 @@ import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { scrollRegistry } from "@/hooks/scrollRegistry";
+
+const AnyTrigger = NativeTabs.Trigger as any;
 
 function NativeTabLayout() {
   return (
     <NativeTabs>
-      <NativeTabs.Trigger name="index">
+      <AnyTrigger name="index" onPress={() => scrollRegistry.trigger("index")}>
         <Icon sf={{ default: "house", selected: "house.fill" }} />
         <Label>Groups</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="activity">
+      </AnyTrigger>
+      <AnyTrigger name="activity" onPress={() => scrollRegistry.trigger("activity")}>
         <Icon sf={{ default: "list.bullet", selected: "list.bullet" }} />
         <Label>Activity</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="analytics">
+      </AnyTrigger>
+      <AnyTrigger name="analytics" onPress={() => scrollRegistry.trigger("analytics")}>
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
         <Label>Stats</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="friends">
+      </AnyTrigger>
+      <AnyTrigger name="friends" onPress={() => scrollRegistry.trigger("friends")}>
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
         <Label>Friends</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="account">
+      </AnyTrigger>
+      <AnyTrigger name="account" onPress={() => scrollRegistry.trigger("account")}>
         <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
         <Label>Account</Label>
-      </NativeTabs.Trigger>
+      </AnyTrigger>
     </NativeTabs>
   );
 }
@@ -84,6 +87,7 @@ function ClassicTabLayout() {
               <Feather name="home" size={22} color={color} />
             ),
         }}
+        listeners={{ tabPress: () => scrollRegistry.trigger("index") }}
       />
       <Tabs.Screen
         name="activity"
@@ -96,6 +100,7 @@ function ClassicTabLayout() {
               <Feather name="activity" size={22} color={color} />
             ),
         }}
+        listeners={{ tabPress: () => scrollRegistry.trigger("activity") }}
       />
       <Tabs.Screen
         name="analytics"
@@ -108,6 +113,7 @@ function ClassicTabLayout() {
               <Feather name="bar-chart-2" size={22} color={color} />
             ),
         }}
+        listeners={{ tabPress: () => scrollRegistry.trigger("analytics") }}
       />
       <Tabs.Screen
         name="friends"
@@ -120,6 +126,7 @@ function ClassicTabLayout() {
               <Feather name="users" size={22} color={color} />
             ),
         }}
+        listeners={{ tabPress: () => scrollRegistry.trigger("friends") }}
       />
       <Tabs.Screen
         name="account"
@@ -132,6 +139,7 @@ function ClassicTabLayout() {
               <Feather name="user" size={22} color={color} />
             ),
         }}
+        listeners={{ tabPress: () => scrollRegistry.trigger("account") }}
       />
     </Tabs>
   );
