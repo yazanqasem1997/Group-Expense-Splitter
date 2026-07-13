@@ -254,7 +254,7 @@ export default function AccountScreen() {
       contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
       showsVerticalScrollIndicator={false}
     >
-      <View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: colors.headerBg }]}>
+      <View style={[styles.header, { paddingTop: topPad + 16 }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Account</Text>
       </View>
 
@@ -662,12 +662,7 @@ const styles = StyleSheet.create({
   content: {},
   header: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingBottom: 12,
   },
   headerTitle: { fontSize: 28, fontFamily: "Inter_700Bold" },
   profileCard: {
