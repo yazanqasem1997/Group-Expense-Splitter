@@ -3,5 +3,9 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/spliteasy-redesign/DarkDepth.tsx": () => import("../components/mockups/spliteasy-redesign/DarkDepth.tsx"),
   "./components/mockups/spliteasy-redesign/SoftPremium.tsx": () => import("../components/mockups/spliteasy-redesign/SoftPremium.tsx"),
-  "./components/mockups/spliteasy-redesign/VividLight.tsx": () => import("../components/mockups/spliteasy-redesign/VividLight.tsx")
+  "./components/mockups/spliteasy-redesign/VividLight.tsx": () => import("../components/mockups/spliteasy-redesign/VividLight.tsx"),
+  "./components/mockups/logos/LogoA.tsx": () => import("../components/mockups/logos/LogoA.tsx"),
+  "./components/mockups/logos/LogoB.tsx": () => import("../components/mockups/logos/LogoB.tsx"),
+  "./components/mockups/logos/LogoC.tsx": () => import("../components/mockups/logos/LogoC.tsx"),
+  "./components/mockups/logos/LogoD.tsx": () => import("../components/mockups/logos/LogoD.tsx")
 };
