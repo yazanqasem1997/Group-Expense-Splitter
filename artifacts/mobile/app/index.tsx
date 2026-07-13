@@ -16,10 +16,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const AUTH_KEY = "@spliteasy_logged_in";
 
-function AppleIcon() {
-  return <Text style={styles.appleGlyph}></Text>;
-}
-
 function GoogleIcon() {
   return (
     <View style={styles.googleIconWrap}>
@@ -80,20 +76,19 @@ export default function LandingScreen() {
   }
 
   return (
-    <LinearGradient colors={["#050C1B", "#0A1A34", "#06111F"]} locations={[0, 0.55, 1]} style={styles.root}>
+    <LinearGradient
+      colors={["#2B7BE0", "#1AAEC0", "#18C4AC"]}
+      locations={[0, 0.52, 1]}
+      style={styles.root}
+    >
       <StatusBar barStyle="light-content" />
 
       <View style={[styles.hero, { paddingTop: insets.top + 52 }]}>
         <Animated.View style={{ opacity: logoOpacity, transform: [{ scale: logoScale }] }}>
           <View style={styles.logoContainer}>
-            <LinearGradient
-              colors={["#4B9FE0", "#1DB8A6"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoGrad}
-            >
-              <Text style={styles.logoEmoji}>✂️</Text>
-            </LinearGradient>
+            <View style={styles.logoBadge}>
+              <Feather name="git-branch" size={54} color="#2B7BE0" />
+            </View>
             <View style={styles.logoGlow} />
           </View>
         </Animated.View>
@@ -126,7 +121,7 @@ export default function LandingScreen() {
             style={({ pressed }) => [styles.btn, styles.appleBtn, pressed && styles.pressed]}
             onPress={() => handleLogin("apple")}
           >
-            <AppleIcon />
+            <Text style={styles.appleGlyph}></Text>
             <Text style={[styles.btnText, styles.appleBtnText]}>Continue with Apple</Text>
           </Pressable>
         )}
@@ -143,7 +138,7 @@ export default function LandingScreen() {
           style={({ pressed }) => [styles.btn, styles.emailBtn, pressed && styles.pressed]}
           onPress={() => handleLogin("email")}
         >
-          <Feather name="mail" size={18} color="#A8C4E0" />
+          <Feather name="mail" size={18} color="rgba(255,255,255,0.85)" />
           <Text style={[styles.btnText, styles.emailBtnText]}>Continue with Email</Text>
         </Pressable>
 
@@ -157,7 +152,7 @@ export default function LandingScreen() {
           style={({ pressed }) => [styles.btn, styles.phoneBtn, pressed && styles.pressed]}
           onPress={() => handleLogin("phone")}
         >
-          <Feather name="phone" size={18} color="#8BA3BE" />
+          <Feather name="phone" size={18} color="rgba(255,255,255,0.55)" />
           <Text style={[styles.btnText, styles.phoneBtnText]}>Use Phone Number</Text>
         </Pressable>
 
@@ -179,44 +174,46 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     paddingHorizontal: 24,
-    gap: 0,
   },
 
   logoContainer: { alignItems: "center", justifyContent: "center", marginBottom: 24 },
-  logoGrad: {
-    width: 104,
-    height: 104,
-    borderRadius: 30,
+  logoBadge: {
+    width: 112,
+    height: 112,
+    borderRadius: 32,
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#4B9FE0",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    elevation: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 18,
   },
-  logoEmoji: { fontSize: 48 },
   logoGlow: {
     position: "absolute",
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: "rgba(75,159,224,0.14)",
+    width: 144,
+    height: 144,
+    borderRadius: 72,
+    backgroundColor: "rgba(255,255,255,0.18)",
     zIndex: -1,
   },
 
-  titleWrap: { marginBottom: 12 },
+  titleWrap: { marginBottom: 10 },
   appName: {
-    fontSize: 42,
+    fontSize: 44,
     fontFamily: "Inter_700Bold",
-    color: "#EEF4FB",
-    letterSpacing: -1.2,
+    color: "#ffffff",
+    letterSpacing: -1.4,
+    textShadowColor: "rgba(0,0,0,0.1)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
 
   tagline: {
     fontSize: 20,
     fontFamily: "Inter_400Regular",
-    color: "#7A99B8",
+    color: "rgba(255,255,255,0.78)",
     textAlign: "center",
     lineHeight: 29,
     marginBottom: 24,
@@ -229,9 +226,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pill: {
-    backgroundColor: "rgba(75,159,224,0.13)",
+    backgroundColor: "rgba(255,255,255,0.18)",
     borderWidth: 1,
-    borderColor: "rgba(75,159,224,0.22)",
+    borderColor: "rgba(255,255,255,0.28)",
     borderRadius: 20,
     paddingHorizontal: 13,
     paddingVertical: 5,
@@ -239,7 +236,7 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
-    color: "#6DAEE8",
+    color: "rgba(255,255,255,0.9)",
   },
 
   authSection: {
@@ -259,8 +256,8 @@ const styles = StyleSheet.create({
   btnText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
 
   appleBtn: { backgroundColor: "#ffffff" },
-  appleBtnText: { color: "#050C1B" },
-  appleGlyph: { fontSize: 20, color: "#050C1B", lineHeight: 24 },
+  appleBtnText: { color: "#111827" },
+  appleGlyph: { fontSize: 20, color: "#111827", lineHeight: 24 },
 
   googleBtn: { backgroundColor: "#ffffff" },
   googleBtnText: { color: "#1F2937" },
@@ -275,30 +272,30 @@ const styles = StyleSheet.create({
   googleGlyph: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff" },
 
   emailBtn: {
-    backgroundColor: "rgba(75,159,224,0.12)",
+    backgroundColor: "rgba(255,255,255,0.18)",
     borderWidth: 1.5,
-    borderColor: "rgba(75,159,224,0.25)",
+    borderColor: "rgba(255,255,255,0.35)",
   },
-  emailBtnText: { color: "#A8C4E0" },
+  emailBtnText: { color: "#ffffff" },
 
   phoneBtn: {
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.18)",
   },
-  phoneBtnText: { color: "#5E7E9E" },
+  phoneBtnText: { color: "rgba(255,255,255,0.55)" },
 
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, marginVertical: 2 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.07)" },
-  dividerLabel: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#3D5068" },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.2)" },
+  dividerLabel: { fontSize: 12, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.45)" },
 
   footer: {
     fontSize: 11.5,
     fontFamily: "Inter_400Regular",
-    color: "#2E4460",
+    color: "rgba(255,255,255,0.38)",
     textAlign: "center",
     lineHeight: 18,
     marginTop: 4,
   },
-  footerLink: { color: "#4B7EA8", fontFamily: "Inter_500Medium" },
+  footerLink: { color: "rgba(255,255,255,0.65)", fontFamily: "Inter_500Medium" },
 });
