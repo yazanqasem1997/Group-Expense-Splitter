@@ -56,6 +56,7 @@ export default function GroupDetailScreen() {
     fromId: string; toId: string; fullAmount: number;
   } | null>(null);
   const [settleAmount, setSettleAmount] = useState("");
+  const [showSettleAllConfirm, setShowSettleAllConfirm] = useState(false);
 
   const group = getGroupById(id);
   const groupExpenses = getGroupExpenses(id);
@@ -169,29 +170,22 @@ export default function GroupDetailScreen() {
 
   function handleSettleAll() {
     if (!group || debts.length === 0) return;
-    const total = debts.reduce((s, d) => s + d.amount, 0);
-    Alert.alert(
-      "Settle Up Group",
-      `Record ${debts.length} payment${debts.length > 1 ? "s" : ""} totalling ${formatAmount(total, group.currency)} to mark all balances as settled?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Settle All",
-          onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            addSettlements(
-              debts.map(d => ({
-                groupId: id,
-                fromId: d.fromId,
-                toId: d.toId,
-                amount: d.amount,
-                currency: group.currency,
-              }))
-            );
-          },
-        },
-      ]
+    setShowSettleAllConfirm(true);
+  }
+
+  function confirmSettleAll() {
+    if (!group) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    addSettlements(
+      debts.map(d => ({
+        groupId: id,
+        fromId: d.fromId,
+        toId: d.toId,
+        amount: d.amount,
+        currency: group.currency,
+      }))
     );
+    setShowSettleAllConfirm(false);
   }
 
   function openSettleModal(fromId: string, toId: string, amount: number) {
@@ -729,6 +723,59 @@ export default function GroupDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Settle All Confirmation Modal */}
+      <Modal
+        visible={showSettleAllConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSettleAllConfirm(false)}
+      >
+        <Pressable style={styles.settleOverlay} onPress={() => setShowSettleAllConfirm(false)}>
+          <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
+            <View style={styles.settleAllIconWrap}>
+              <View style={[styles.settleAllIconCircle, { backgroundColor: colors.tealTint }]}>
+                <Feather name="check" size={26} color={colors.teal} />
+              </View>
+            </View>
+            <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Settle Up Group</Text>
+            <Text style={[styles.settleSheetSub, { color: colors.textSecondary }]}>
+              Mark all balances in this group as settled?
+            </Text>
+            {group && (
+              <View style={[styles.settleAllSummary, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <View style={styles.settleAllSummaryRow}>
+                  <Text style={[styles.settleAllSummaryLabel, { color: colors.textSecondary }]}>Payments</Text>
+                  <Text style={[styles.settleAllSummaryValue, { color: colors.text }]}>
+                    {debts.length} {debts.length === 1 ? "transfer" : "transfers"}
+                  </Text>
+                </View>
+                <View style={[styles.settleAllDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.settleAllSummaryRow}>
+                  <Text style={[styles.settleAllSummaryLabel, { color: colors.textSecondary }]}>Total</Text>
+                  <Text style={[styles.settleAllSummaryValue, { color: colors.teal }]}>
+                    {formatAmount(debts.reduce((s, d) => s + d.amount, 0), group.currency)}
+                  </Text>
+                </View>
+              </View>
+            )}
+            <View style={styles.settleSheetActions}>
+              <Pressable
+                style={[styles.settleSheetBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => setShowSettleAllConfirm(false)}
+              >
+                <Text style={[styles.settleSheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.settleSheetBtn, { backgroundColor: colors.teal, borderColor: colors.teal }]}
+                onPress={confirmSettleAll}
+              >
+                <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>Settle All</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -854,6 +901,13 @@ const styles = StyleSheet.create({
     fontSize: 14, fontFamily: "Inter_400Regular", maxHeight: 80,
   },
   chatSendBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  settleAllIconWrap: { alignItems: "center", marginBottom: 4 },
+  settleAllIconCircle: { width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" },
+  settleAllSummary: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 4 },
+  settleAllSummaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12 },
+  settleAllSummaryLabel: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  settleAllSummaryValue: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  settleAllDivider: { height: 1 },
   settleOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: 24 },
   settleSheet: { width: "100%", borderRadius: 20, padding: 24, gap: 12 },
   settleSheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
