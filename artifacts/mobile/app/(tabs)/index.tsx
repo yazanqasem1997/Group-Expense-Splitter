@@ -270,7 +270,7 @@ export default function GroupsScreen() {
   const [query, setQuery] = useState("");
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showSort, setShowSort] = useState(false);
-  const [sortBy, setSortBy] = useState<"balance" | "name" | "recent">("balance");
+  const [sortBy, setSortBy] = useState<"balance" | "name" | "recent" | "activity">("balance");
   const listRef = useRef<FlatList>(null);
   const navigation = useNavigation();
   useEffect(() => {
@@ -318,6 +318,15 @@ export default function GroupsScreen() {
         return Math.max(...dates);
       };
       list.sort((a, b) => lastActivity(b) - lastActivity(a));
+    } else if (sortBy === "activity") {
+      const lastTxn = (g: typeof list[0]) => {
+        const dates = [
+          ...expenses.filter(e => e.groupId === g.id).map(e => new Date(e.createdAt).getTime()),
+          ...settlements.filter(s => s.groupId === g.id).map(s => new Date(s.createdAt).getTime()),
+        ];
+        return dates.length > 0 ? Math.max(...dates) : 0;
+      };
+      list.sort((a, b) => lastTxn(b) - lastTxn(a));
     } else {
       list.sort((a, b) => {
         const netFor = (g: typeof a) => {
@@ -497,7 +506,7 @@ export default function GroupsScreen() {
                   >
                     <Feather name="sliders" size={11} color={colors.primary} />
                     <Text style={[styles.sectionSort, { color: colors.primary }]}>
-                      {sortBy === "balance" ? "Balance" : sortBy === "name" ? "Name" : "Recent"}
+                      {sortBy === "balance" ? "Balance" : sortBy === "name" ? "Name" : sortBy === "recent" ? "Recent" : "Activity"}
                     </Text>
                   </Pressable>
                 </View>
@@ -623,9 +632,9 @@ export default function GroupsScreen() {
         <Pressable style={bsStyles.backdrop} onPress={() => setShowSort(false)} />
         <View style={[sortStyles.sheet, { backgroundColor: colors.surface }]}>
           <Text style={[sortStyles.title, { color: colors.textSecondary }]}>SORT GROUPS BY</Text>
-          {(["balance", "name", "recent"] as const).map(opt => {
-            const label = opt === "balance" ? "Highest balance" : opt === "name" ? "Name (A–Z)" : "Most recent";
-            const icon = opt === "balance" ? "trending-up" : opt === "name" ? "type" : "clock";
+          {(["balance", "name", "recent", "activity"] as const).map(opt => {
+            const label = opt === "balance" ? "Highest balance" : opt === "name" ? "Name (A–Z)" : opt === "recent" ? "Most recent" : "Last activity";
+            const icon = opt === "balance" ? "trending-up" : opt === "name" ? "type" : opt === "recent" ? "clock" : "zap";
             const active = sortBy === opt;
             return (
               <Pressable
