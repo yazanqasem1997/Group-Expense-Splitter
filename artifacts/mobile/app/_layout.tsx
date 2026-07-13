@@ -96,9 +96,9 @@ export default function RootLayout() {
                   <AppProvider>
                     <BiometricProvider>
                       <RootLayoutNav />
-                      <AppAlert />
                     </BiometricProvider>
                   </AppProvider>
+                  <AppAlert />
                 </ThemeProvider>
               </ToastProvider>
             </KeyboardProvider>
