@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
+
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { Currency, Group, Member, useApp } from "@/context/AppContext";
+import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 
 const GROUP_TYPES: { value: Group["type"]; label: string; emoji: string }[] = [
@@ -62,7 +63,7 @@ export default function NewGroupScreen() {
   function handleInvite() {
     const email = inviteEmail.trim().toLowerCase();
     if (!isValidEmail(email)) {
-      Alert.alert("Invalid email", "Please enter a valid email address");
+      showAlert("Invalid email", "Please enter a valid email address");
       return;
     }
     const alreadyMember = members.find(m => m.email?.toLowerCase() === email);
@@ -92,14 +93,14 @@ export default function NewGroupScreen() {
 
   function handleCreate() {
     if (!name.trim()) {
-      Alert.alert("Name required", "Please enter a group name");
+      showAlert("Name required", "Please enter a group name");
       return;
     }
     const realSelectedIds = selectedIds.filter(id => !id.startsWith("pending_"));
     const pendingCount = pendingInvites.filter(p => selectedIds.includes(p.tempId)).length;
 
     if (realSelectedIds.length + pendingCount < 2) {
-      Alert.alert("Add members", "Please add at least one other member");
+      showAlert("Add members", "Please add at least one other member");
       return;
     }
 

@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
+
   Platform,
   Pressable,
   RefreshControl,
@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { showAlert } from "@/hooks/alertStore";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatAmount } from "@/components/AmountText";
@@ -83,7 +84,7 @@ export default function FriendsScreen() {
 
   function handleResend(member: Member) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(
+    showAlert(
       "Invite resent",
       `A new invitation has been sent to ${member.email ?? member.name}.`,
       [{ text: "OK" }]

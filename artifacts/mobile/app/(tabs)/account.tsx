@@ -6,7 +6,7 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+
   LayoutAnimation,
   Modal,
   Platform,
@@ -18,6 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { showAlert } from "@/hooks/alertStore";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
@@ -500,7 +501,7 @@ export default function AccountScreen() {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
             } else {
-              Alert.alert("Disable Lock", "Remove biometric protection?", [
+              showAlert("Disable Lock", "Remove biometric protection?", [
                 { text: "Cancel", style: "cancel" },
                 { text: "Remove", style: "destructive", onPress: () => setBiometricEnabled(false) },
               ]);
@@ -578,7 +579,7 @@ export default function AccountScreen() {
             { backgroundColor: colors.surface, opacity: pressed ? 0.8 : 1 },
           ]}
           onPress={() => {
-            Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+            showAlert("Sign Out", "Are you sure you want to sign out?", [
               { text: "Cancel", style: "cancel" },
               {
                 text: "Sign Out",

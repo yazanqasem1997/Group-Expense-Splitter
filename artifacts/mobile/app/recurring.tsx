@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
+
   FlatList,
   Modal,
   Platform,
@@ -29,6 +29,7 @@ import {
   SplitType,
   useApp,
 } from "@/context/AppContext";
+import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 
 const FREQUENCIES: RecurringFrequency[] = ["weekly", "biweekly", "monthly", "quarterly"];
@@ -141,7 +142,7 @@ export default function RecurringScreen() {
   }
 
   function handleDelete(id: string) {
-    Alert.alert("Delete Recurring", "Stop and delete this recurring expense?", [
+    showAlert("Delete Recurring", "Stop and delete this recurring expense?", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => { deleteRecurringExpense(id); } },
     ]);

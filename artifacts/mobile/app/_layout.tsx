@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AppAlert } from "@/components/AppAlert";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { BiometricProvider, useBiometric } from "@/context/BiometricContext";
@@ -95,6 +96,7 @@ export default function RootLayout() {
                   <AppProvider>
                     <BiometricProvider>
                       <RootLayoutNav />
+                      <AppAlert />
                     </BiometricProvider>
                   </AppProvider>
                 </ThemeProvider>
