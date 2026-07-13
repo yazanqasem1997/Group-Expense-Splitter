@@ -314,14 +314,14 @@ export default function AccountScreen() {
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.statCard, { backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}
-          onPress={() => router.push("/(tabs)/activity")}
+          onPress={() => router.push({ pathname: "/(tabs)/activity", params: { filter: "expenses" } })}
         >
           <Text style={[styles.statNum, { color: colors.text }]}>{myExpensesCount}</Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Expenses</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.statCard, { backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}
-          onPress={() => router.push("/(tabs)/activity")}
+          onPress={() => router.push({ pathname: "/(tabs)/activity", params: { filter: "settlements" } })}
         >
           <Text style={[styles.statNum, { color: colors.text }]}>{mySettlementsCount}</Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Settled</Text>
