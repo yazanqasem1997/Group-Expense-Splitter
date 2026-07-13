@@ -185,7 +185,7 @@ export default function AccountScreen() {
     });
   }, [navigation]);
   const nameInputRef = useRef<TextInput>(null);
-  const [expandedNotifCats, setExpandedNotifCats] = useState<string[]>(["expenses", "social", "financial"]);
+  const [expandedNotifCats, setExpandedNotifCats] = useState<string[]>([]);
 
   function toggleNotifCat(cat: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
