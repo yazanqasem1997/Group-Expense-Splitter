@@ -168,10 +168,25 @@ export default function AnalyticsScreen() {
     : "Cumulative amount you paid";
 
   const categoryTotals = useMemo(() => {
+    const source = chartView === "categories" ? filteredExpenses : myExpenses;
     const map: Record<string, number> = {};
-    myExpenses.forEach(e => { map[e.category] = (map[e.category] ?? 0) + toDisplay(e.amount, e.groupId); });
+    source.forEach(e => { map[e.category] = (map[e.category] ?? 0) + toDisplay(e.amount, e.groupId); });
     return Object.keys(map).map(cat => ({ cat, total: map[cat] })).sort((a, b) => b.total - a.total);
-  }, [myExpenses, activeCurrency, hasRates]);
+  }, [myExpenses, filteredExpenses, chartView, activeCurrency, hasRates]);
+
+  const memberTotals = useMemo(() => {
+    if (chartView !== "members" || !selectedGroup) return [];
+    return selectedGroup.memberIds
+      .map(memberId => {
+        const member = getMemberById(memberId);
+        const total = filteredExpenses
+          .filter(e => e.paidById === memberId)
+          .reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0);
+        return { memberId, member, total };
+      })
+      .filter(m => m.total > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [chartView, selectedGroup, filteredExpenses, getMemberById, activeCurrency, hasRates]);
 
   const CATEGORY_COLORS: Record<string, string> = {
     food: colors.accent, transport: colors.teal, accommodation: colors.primary,
@@ -423,25 +438,51 @@ export default function AnalyticsScreen() {
           />
         </View>
 
-        {/* Category breakdown */}
-        {categoryTotals.length > 0 && (
+        {/* Breakdown section — title + data follow the chart view toggle */}
+        {(chartView === "members" ? memberTotals.length > 0 : categoryTotals.length > 0) && (
           <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>By category</Text>
-            {categoryTotals.map(({ cat, total }) => {
-              const pct = totalSpent > 0 ? total / totalSpent : 0;
-              const barColor = CATEGORY_COLORS[cat] ?? colors.textTertiary;
-              const label = cat.charAt(0).toUpperCase() + cat.slice(1);
-              return (
-                <View key={cat} style={styles.catRow}>
-                  <Text style={[styles.catLabel, { color: colors.text }]}>{label}</Text>
-                  <View style={styles.catBarWrap}>
-                    <View style={[styles.catBar, { backgroundColor: barColor, width: `${Math.max(pct * 100, 2)}%` as any }]} />
-                    <View style={[styles.catBarBg, { backgroundColor: colors.border }]} />
-                  </View>
-                  <Text style={[styles.catValue, { color: colors.textSecondary }]}>{sym}{total.toFixed(0)}</Text>
-                </View>
-              );
-            })}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              {chartView === "members" ? "By member" : "By category"}
+            </Text>
+
+            {chartView === "members"
+              ? (() => {
+                  const maxTotal = memberTotals[0]?.total ?? 1;
+                  return memberTotals.map(({ memberId, member, total }) => {
+                    const pct = total / maxTotal;
+                    const barColor = member?.avatarColor ?? colors.primary;
+                    const label = member?.isCurrentUser ? "You" : (member?.name ?? "Unknown");
+                    return (
+                      <View key={memberId} style={styles.catRow}>
+                        <Text style={[styles.catLabel, { color: colors.text }]}>{label}</Text>
+                        <View style={styles.catBarWrap}>
+                          <View style={[styles.catBar, { backgroundColor: barColor, width: `${Math.max(pct * 100, 2)}%` as any }]} />
+                          <View style={[styles.catBarBg, { backgroundColor: colors.border }]} />
+                        </View>
+                        <Text style={[styles.catValue, { color: colors.textSecondary }]}>{sym}{total.toFixed(0)}</Text>
+                      </View>
+                    );
+                  });
+                })()
+              : (() => {
+                  const base = chartView === "categories" ? filteredExpenses.reduce((s, e) => s + toDisplay(e.amount, e.groupId), 0) : totalSpent;
+                  return categoryTotals.map(({ cat, total }) => {
+                    const pct = base > 0 ? total / base : 0;
+                    const barColor = CATEGORY_COLORS[cat] ?? colors.textTertiary;
+                    const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+                    return (
+                      <View key={cat} style={styles.catRow}>
+                        <Text style={[styles.catLabel, { color: colors.text }]}>{label}</Text>
+                        <View style={styles.catBarWrap}>
+                          <View style={[styles.catBar, { backgroundColor: barColor, width: `${Math.max(pct * 100, 2)}%` as any }]} />
+                          <View style={[styles.catBarBg, { backgroundColor: colors.border }]} />
+                        </View>
+                        <Text style={[styles.catValue, { color: colors.textSecondary }]}>{sym}{total.toFixed(0)}</Text>
+                      </View>
+                    );
+                  });
+                })()
+            }
           </View>
         )}
       </ScrollView>
