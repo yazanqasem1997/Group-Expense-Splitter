@@ -304,18 +304,27 @@ export default function AccountScreen() {
 
       {/* Stats */}
       <View style={styles.statsRow}>
-        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+        <Pressable
+          style={({ pressed }) => [styles.statCard, { backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => router.push("/")}
+        >
           <Text style={[styles.statNum, { color: colors.text }]}>{groups.length}</Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Groups</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.statCard, { backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => router.push("/(tabs)/activity")}
+        >
           <Text style={[styles.statNum, { color: colors.text }]}>{myExpensesCount}</Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Expenses</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.statCard, { backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => router.push("/(tabs)/activity")}
+        >
           <Text style={[styles.statNum, { color: colors.text }]}>{mySettlementsCount}</Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Settled</Text>
-        </View>
+        </Pressable>
       </View>
 
       {/* Notifications */}
