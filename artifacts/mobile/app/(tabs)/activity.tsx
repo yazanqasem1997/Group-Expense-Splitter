@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -47,6 +48,8 @@ export default function ActivityScreen() {
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const listRef = useRef<FlatList>(null);
+  useScrollToTop(listRef);
   const searchRef = useRef<TextInput>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -270,6 +273,7 @@ export default function ActivityScreen() {
       </View>
 
       <FlatList
+        ref={listRef}
         data={filteredItems}
         keyExtractor={item =>
           item.type === "expense" ? `exp_${item.data.id}` : `set_${item.data.id}`

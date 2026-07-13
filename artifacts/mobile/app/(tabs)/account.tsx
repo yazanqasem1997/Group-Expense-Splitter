@@ -18,6 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
@@ -176,6 +177,8 @@ export default function AccountScreen() {
   const [refreshingRates, setRefreshingRates] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
   const nameInputRef = useRef<TextInput>(null);
   const [expandedNotifCats, setExpandedNotifCats] = useState<string[]>(["expenses", "social", "financial"]);
 
@@ -241,6 +244,7 @@ export default function AccountScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
       showsVerticalScrollIndicator={false}
