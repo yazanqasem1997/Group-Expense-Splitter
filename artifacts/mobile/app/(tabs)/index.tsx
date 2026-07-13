@@ -255,7 +255,7 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
 export default function GroupsScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { groups, expenses, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById, getGroupBalances, convertCurrency, currentUser, unarchiveGroup, checkAndAddRecurring, fetchExchangeRates } = useApp();
+  const { groups, expenses, settlements, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById, getGroupBalances, convertCurrency, currentUser, unarchiveGroup, checkAndAddRecurring, fetchExchangeRates } = useApp();
   const { youOwe, youAreOwed, currency: totalCurrency } = useMemo(() => getTotalOwed(), [getTotalOwed]);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -301,7 +301,15 @@ export default function GroupsScreen() {
     if (sortBy === "name") {
       list.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortBy === "recent") {
-      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const lastActivity = (g: typeof list[0]) => {
+        const dates = [
+          new Date(g.createdAt).getTime(),
+          ...expenses.filter(e => e.groupId === g.id).map(e => new Date(e.createdAt).getTime()),
+          ...settlements.filter(s => s.groupId === g.id).map(s => new Date(s.createdAt).getTime()),
+        ];
+        return Math.max(...dates);
+      };
+      list.sort((a, b) => lastActivity(b) - lastActivity(a));
     } else {
       list.sort((a, b) => {
         const netFor = (g: typeof a) => {
@@ -314,7 +322,7 @@ export default function GroupsScreen() {
       });
     }
     return list;
-  }, [activeGroups, query, isSearching, getMemberById, sortBy, getGroupBalances, convertCurrency, currentUser.id]);
+  }, [activeGroups, query, isSearching, getMemberById, sortBy, getGroupBalances, convertCurrency, currentUser.id, expenses, settlements]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
