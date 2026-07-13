@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
@@ -46,8 +46,17 @@ export default function ActivityScreen() {
     setRefreshing(false);
   }, [checkAndAddRecurring, fetchExchangeRates]);
 
+  const { filter } = useLocalSearchParams<{ filter?: string }>();
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(
+    filter === "expenses" || filter === "settlements" ? filter : "all"
+  );
+
+  useEffect(() => {
+    if (filter === "expenses" || filter === "settlements") {
+      setTypeFilter(filter);
+    }
+  }, [filter]);
   const listRef = useRef<FlatList>(null);
   useEffect(() => {
     scrollRegistry.register("activity", () => {
