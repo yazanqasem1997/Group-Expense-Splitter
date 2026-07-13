@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useScrollToTop } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
@@ -178,7 +178,12 @@ export default function AccountScreen() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
   const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
+  const navigation = useNavigation();
+  useEffect(() => {
+    return navigation.addListener("tabPress" as any, () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  }, [navigation]);
   const nameInputRef = useRef<TextInput>(null);
   const [expandedNotifCats, setExpandedNotifCats] = useState<string[]>(["expenses", "social", "financial"]);
 
