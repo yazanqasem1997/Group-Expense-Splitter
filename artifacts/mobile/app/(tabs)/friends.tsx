@@ -126,7 +126,7 @@ export default function FriendsScreen() {
     setPhotoLoading(false);
   }
 
-  async function handlePickPhoto() {
+  async function pickFromLibrary() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       showAlert("Permission needed", "Allow photo library access to set a contact photo.");
@@ -141,6 +141,31 @@ export default function FriendsScreen() {
     });
     setPhotoLoading(false);
     if (!result.canceled) setEditPhoto(result.assets[0].uri);
+  }
+
+  async function pickFromCamera() {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      showAlert("Permission needed", "Allow camera access to take a contact photo.");
+      return;
+    }
+    setPhotoLoading(true);
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: "images",
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    setPhotoLoading(false);
+    if (!result.canceled) setEditPhoto(result.assets[0].uri);
+  }
+
+  function handlePickPhoto() {
+    showAlert("Add Photo", "Choose a photo source", [
+      { text: "Take Photo", onPress: pickFromCamera },
+      { text: "Choose from Library", onPress: pickFromLibrary },
+      { text: "Cancel", style: "cancel" },
+    ]);
   }
 
   function handleSaveContact() {
