@@ -18,7 +18,8 @@ import { AmountText } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
-import { AppNotification, Expense, Settlement, useApp } from "@/context/AppContext";
+import { NotificationSheet } from "@/components/NotificationSheet";
+import { Expense, Settlement, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
@@ -40,12 +41,12 @@ export default function ActivityScreen() {
   const {
     expenses, settlements, getMemberById, getGroupById, currentUser,
     checkAndAddRecurring, fetchExchangeRates,
-    notifications, unreadNotificationCount, markAllNotificationsRead,
+    unreadNotificationCount,
     checkAndSendGroupReminders,
   } = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [showNotifs, setShowNotifs] = useState(false);
+  const [showNotifSheet, setShowNotifSheet] = useState(false);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -240,6 +241,19 @@ export default function ActivityScreen() {
               {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
             </Text>
           </View>
+          <Pressable
+            style={({ pressed }) => [styles.bellBtn, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={() => setShowNotifSheet(true)}
+          >
+            <Feather name="bell" size={20} color={colors.text} />
+            {unreadNotificationCount > 0 && (
+              <View style={[styles.bellBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.bellBadgeText}>
+                  {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                </Text>
+              </View>
+            )}
+          </Pressable>
         </View>
 
         {/* Search bar */}
@@ -296,39 +310,10 @@ export default function ActivityScreen() {
         </View>
       </View>
 
-      {/* Notification banner */}
-      {unreadNotificationCount > 0 && (
-        <Pressable
-          style={[styles.notifBanner, { backgroundColor: colors.primary }]}
-          onPress={() => { setShowNotifs(v => !v); if (!showNotifs) markAllNotificationsRead(); }}
-        >
-          <View style={styles.notifBannerLeft}>
-            <View style={[styles.notifBell, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
-              <Feather name="bell" size={14} color="#fff" />
-              <View style={styles.notifDot} />
-            </View>
-            <Text style={styles.notifBannerText}>
-              {unreadNotificationCount} new nudge{unreadNotificationCount > 1 ? "s" : ""}
-            </Text>
-          </View>
-          <Feather name={showNotifs ? "chevron-up" : "chevron-down"} size={16} color="#fff" />
-        </Pressable>
-      )}
-      {showNotifs && notifications.length > 0 && (
-        <View style={[styles.notifList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {notifications.slice(0, 5).map(n => (
-            <View key={n.id} style={[styles.notifItem, { borderBottomColor: colors.border }]}>
-              <Text style={styles.notifItemEmoji}>
-                {n.tone === "friendly" ? "👋" : n.tone === "urgent" ? "🚨" : "⏰"}
-              </Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.notifItemTitle, { color: colors.text }]}>{n.title}</Text>
-                <Text style={[styles.notifItemBody, { color: colors.textSecondary }]}>{n.body}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
+      <NotificationSheet
+        visible={showNotifSheet}
+        onClose={() => setShowNotifSheet(false)}
+      />
 
       <FlatList
         ref={listRef}
@@ -410,16 +395,18 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   filterRow: { flexDirection: "row", gap: 7, paddingHorizontal: 2 },
-  notifBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 10 },
-  notifBannerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  notifBell: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  notifDot: { position: "absolute", top: 3, right: 3, width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#FFD600", borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" },
-  notifBannerText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
-  notifList: { borderWidth: 1, borderTopWidth: 0, gap: 0 },
-  notifItem: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 14, paddingVertical: 12, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  notifItemEmoji: { fontSize: 20, marginTop: 1 },
-  notifItemTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
-  notifItemBody: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  bellBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+    marginLeft: 6,
+  },
+  bellBadge: {
+    position: "absolute", top: 2, right: 2,
+    minWidth: 16, height: 16, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" },
   filterChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 11, paddingVertical: 7,

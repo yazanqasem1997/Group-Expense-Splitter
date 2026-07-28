@@ -324,6 +324,7 @@ interface AppContextType {
   notifications: AppNotification[];
   unreadNotificationCount: number;
   markAllNotificationsRead: () => void;
+  dismissNotification: (id: string) => void;
   checkAndSendGroupReminders: () => void;
   isLoading: boolean;
 }
@@ -1956,6 +1957,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [saveNotifications]);
 
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications(prev => {
+      const updated = prev.filter(n => n.id !== id);
+      saveNotifications(updated);
+      return updated;
+    });
+  }, [saveNotifications]);
+
   const unreadNotificationCount = notifications.filter(n => !n.read).length;
 
   const checkAndAddRecurring = useCallback((): number => {
@@ -2160,6 +2169,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         notifications,
         unreadNotificationCount,
         markAllNotificationsRead,
+        dismissNotification,
         checkAndSendGroupReminders,
         isLoading,
       }}
