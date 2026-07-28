@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
 
   FlatList,
@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,16 +20,22 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
+import { DatePickerField } from "@/components/DatePickerField";
+import { MemberProfileSheet } from "@/components/MemberProfileSheet";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
-import { Expense, GroupMessage, useApp } from "@/context/AppContext";
+import { Expense, GroupMessage, Settlement, useApp } from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
 type Tab = "expenses" | "balances" | "chat" | "charts";
+
+type FeedItem =
+  | { type: "expense"; id: string; createdAt: string; data: Expense }
+  | { type: "settlement"; id: string; createdAt: string; data: Settlement };
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -37,8 +44,10 @@ export default function GroupDetailScreen() {
   const {
     getGroupById, getMemberById, getGroupExpenses, getGroupSettlements,
     getGroupBalances, getGroupPendingInvites, sendGroupInvite,
-    currentUser, deleteGroup, addSettlement, addSettlements, archiveGroup, unarchiveGroup,
-    addGroupMessage, getGroupMessages,
+    currentUser, deleteGroup, deleteExpense, deleteSettlement,
+    addSettlement, addSettlements, archiveGroup, unarchiveGroup,
+    addGroupMessage, getGroupMessages, updateGroup,
+    checkAndAddRecurring, fetchExchangeRates,
   } = useApp();
 
   const [tab, setTab] = useState<Tab>("expenses");
@@ -59,12 +68,30 @@ export default function GroupDetailScreen() {
   const [settleAmount, setSettleAmount] = useState("");
   const [showSettleAllConfirm, setShowSettleAllConfirm] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
+
+  // Trip dates modal state
+  const [showTripDatesModal, setShowTripDatesModal] = useState(false);
+  const [tripStartInput, setTripStartInput] = useState(""); // ISO YYYY-MM-DD
+  const [tripEndInput, setTripEndInput] = useState("");   // ISO YYYY-MM-DD
+  const [tripStartReminderInput, setTripStartReminderInput] = useState("2");
+  const [settleUpReminderInput, setSettleUpReminderInput] = useState("7");
+  const [activeCalendar, setActiveCalendar] = useState<"start" | "end" | null>(null);
+
   const group = getGroupById(id);
   const groupExpenses = getGroupExpenses(id);
   const groupSettlements = getGroupSettlements(id);
   const debts = useMemo(() => getGroupBalances(id), [id, getGroupBalances]);
   const pendingInvites = useMemo(() => getGroupPendingInvites(id), [id, getGroupPendingInvites]);
   const messages = useMemo(() => getGroupMessages(id), [id, getGroupMessages]);
+
+  const feedItems = useMemo<FeedItem[]>(() => {
+    const expItems: FeedItem[] = groupExpenses.map(e => ({ type: "expense", id: e.id, createdAt: e.createdAt, data: e }));
+    const settItems: FeedItem[] = groupSettlements.map(s => ({ type: "settlement", id: s.id, createdAt: s.createdAt, data: s }));
+    return [...expItems, ...settItems].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [groupExpenses, groupSettlements]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -130,9 +157,19 @@ export default function GroupDetailScreen() {
   const myDebts = debts.filter(d => d.fromId === currentUser.id);
   const myCredits = debts.filter(d => d.toId === currentUser.id);
 
+  async function handleRefresh() {
+    setRefreshing(true);
+    checkAndAddRecurring();
+    await fetchExchangeRates().catch(() => {});
+    setRefreshing(false);
+  }
+
   function handleGroupOptions() {
     if (!group) return;
     const archiveLabel = group.isArchived ? "Unarchive Group" : "Archive Group";
+    const tripDatesBtn = group.type === "trip"
+      ? [{ text: "Trip Dates & Reminders", onPress: openTripDatesModal }]
+      : [];
     showAlert(group.name, "Group options", [
       {
         text: "Add Expense",
@@ -142,6 +179,7 @@ export default function GroupDetailScreen() {
         text: "QR Invite Code",
         onPress: () => router.push({ pathname: "/group/qr/[id]", params: { id } }),
       },
+      ...tripDatesBtn,
       {
         text: archiveLabel,
         onPress: () => {
@@ -156,6 +194,26 @@ export default function GroupDetailScreen() {
       },
       { text: "Cancel", style: "cancel" },
     ]);
+  }
+
+  function openTripDatesModal() {
+    setTripStartInput(group?.startDate ?? "");
+    setTripEndInput(group?.endDate ?? "");
+    setTripStartReminderInput(String(group?.tripStartReminderDays ?? 2));
+    setSettleUpReminderInput(String(group?.settleUpReminderDays ?? 7));
+    setActiveCalendar(null);
+    setShowTripDatesModal(true);
+  }
+
+  function saveTripDates() {
+    if (!group) return;
+    updateGroup(id, {
+      startDate: tripStartInput.trim() || undefined,
+      endDate: tripEndInput.trim() || undefined,
+      tripStartReminderDays: parseInt(tripStartReminderInput) || undefined,
+      settleUpReminderDays: parseInt(settleUpReminderInput) || undefined,
+    });
+    setShowTripDatesModal(false);
   }
 
   function handleDeleteGroup() {
@@ -248,7 +306,10 @@ export default function GroupDetailScreen() {
     const payer = getMemberById(expense.paidById);
     const youPaid = expense.paidById === currentUser.id;
     const myShare = expense.splits.find(s => s.memberId === currentUser.id);
-    const netForMe = youPaid ? expense.amount - (myShare?.amount ?? 0) : -(myShare?.amount ?? 0);
+    const isInvolved = youPaid || !!myShare;
+    const netForMe = isInvolved
+      ? (youPaid ? expense.amount - (myShare?.amount ?? 0) : -(myShare!.amount))
+      : null;
     const reactionCount = Object.values(expense.reactions ?? {}).reduce((s, ids) => s + ids.length, 0);
     const commentCount = (expense.comments ?? []).length;
 
@@ -259,6 +320,26 @@ export default function GroupDetailScreen() {
           { backgroundColor: colors.surface, opacity: pressed ? 0.92 : 1 },
         ]}
         onPress={() => router.push({ pathname: "/expense/[id]", params: { id: expense.id } })}
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          showAlert(expense.description, "What would you like to do?", [
+            {
+              text: "Edit",
+              onPress: () =>
+                router.push({ pathname: "/expense/new", params: { expenseId: expense.id, groupId: expense.groupId } }),
+            },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () =>
+                showAlert("Delete expense?", `"${expense.description}" will be removed for everyone.`, [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete", style: "destructive", onPress: () => deleteExpense(expense.id) },
+                ]),
+            },
+            { text: "Cancel", style: "cancel" },
+          ]);
+        }}
       >
         <CategoryIcon category={expense.category} size={40} />
         <View style={styles.expenseBody}>
@@ -280,12 +361,68 @@ export default function GroupDetailScreen() {
               </View>
             )}
           </View>
+          {!isInvolved && (
+            <View style={styles.notInvolvedPill}>
+              <Feather name="eye-off" size={10} color={colors.textTertiary} />
+              <Text style={[styles.notInvolvedText, { color: colors.textTertiary }]}>Not involved</Text>
+            </View>
+          )}
         </View>
         <View style={styles.expenseRight}>
           <AmountText amount={expense.amount} currency={group!.currency} style={[styles.expenseTotal, { color: colors.text }]} />
-          <Text style={[styles.expenseNet, { color: netForMe >= 0 ? colors.positive : colors.negative }]}>
-            {netForMe >= 0 ? "+" : "-"}{formatAmount(Math.abs(netForMe), group!.currency)}
+          {isInvolved && netForMe !== null && (
+            <Text style={[styles.expenseNet, { color: netForMe >= 0 ? colors.positive : colors.negative }]}>
+              {netForMe >= 0 ? "+" : "-"}{formatAmount(Math.abs(netForMe), group!.currency)}
+            </Text>
+          )}
+        </View>
+      </Pressable>
+    );
+  }
+
+  function renderSettlementItem(settlement: Settlement) {
+    const from = getMemberById(settlement.fromId);
+    const to = getMemberById(settlement.toId);
+    const isMe = settlement.fromId === currentUser.id || settlement.toId === currentUser.id;
+
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.expenseRow,
+          { backgroundColor: isMe ? colors.tealTint : colors.surface, opacity: pressed ? 0.92 : 1 },
+        ]}
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          showAlert("Settlement", "Remove this settlement record?", [
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () =>
+                showAlert("Delete settlement?", "This will restore the outstanding balance.", [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete", style: "destructive", onPress: () => deleteSettlement(settlement.id) },
+                ]),
+            },
+            { text: "Cancel", style: "cancel" },
+          ]);
+        }}
+      >
+        <View style={[styles.settleFeedIcon, { backgroundColor: colors.tealTint }]}>
+          <Feather name="check-circle" size={20} color={colors.teal} />
+        </View>
+        <View style={styles.expenseBody}>
+          <Text style={[styles.expenseName, { color: colors.text }]} numberOfLines={1}>
+            {settlement.fromId === currentUser.id ? "You" : from?.name ?? "Someone"}
+            {" → "}
+            {settlement.toId === currentUser.id ? "you" : to?.name ?? "Someone"}
           </Text>
+          <Text style={[styles.expenseMeta, { color: colors.textSecondary }]}>
+            Settlement · {timeAgo(settlement.createdAt)}
+          </Text>
+        </View>
+        <View style={styles.expenseRight}>
+          <AmountText amount={settlement.amount} currency={group!.currency} style={[styles.expenseTotal, { color: colors.teal }]} />
+          <Text style={[styles.expenseNet, { color: colors.teal }]}>settled</Text>
         </View>
       </Pressable>
     );
@@ -305,7 +442,17 @@ export default function GroupDetailScreen() {
     }
 
     return (
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {debts.map(debt => {
           const from = getMemberById(debt.fromId);
           const to = getMemberById(debt.toId);
@@ -478,18 +625,46 @@ export default function GroupDetailScreen() {
         </View>
       </View>
 
+      {group.type === "trip" && (
+        <Pressable
+          style={[styles.tripDatesBar, { backgroundColor: colors.primaryLight }]}
+          onPress={openTripDatesModal}
+        >
+          <Feather name="calendar" size={15} color={colors.primary} />
+          {group.startDate || group.endDate ? (
+            <Text style={[styles.tripDatesText, { color: colors.primary }]}>
+              {group.startDate
+                ? group.startDate.split("-").reverse().join("-")
+                : "?"}{" → "}{group.endDate
+                ? group.endDate.split("-").reverse().join("-")
+                : "?"}
+            </Text>
+          ) : (
+            <Text style={[styles.tripDatesText, { color: colors.primary }]}>Set trip dates & reminders</Text>
+          )}
+          <Feather name="chevron-right" size={13} color={colors.primary} style={{ marginLeft: "auto" }} />
+        </Pressable>
+      )}
+
       <View style={[styles.members, { backgroundColor: colors.surface }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.memberList}>
           {group.memberIds.map(mid => {
             const m = getMemberById(mid);
             if (!m) return null;
             return (
-              <View key={mid} style={styles.memberChip}>
-                <Avatar name={m.name} color={m.avatarColor} size={32} />
+              <Pressable
+                key={mid}
+                style={({ pressed }) => [styles.memberChip, { opacity: pressed ? 0.7 : 1 }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setProfileMemberId(mid);
+                }}
+              >
+                <Avatar name={m.name} color={m.avatarColor} size={32} imageUri={m.photo} />
                 <Text style={[styles.memberName, { color: colors.textSecondary }]} numberOfLines={1}>
                   {m.isCurrentUser ? "You" : m.name.split(" ")[0]}
                 </Text>
-              </View>
+              </Pressable>
             );
           })}
           {pendingInvites.map(inv => (
@@ -604,12 +779,20 @@ export default function GroupDetailScreen() {
 
       {tab === "expenses" ? (
         <FlatList
-          data={groupExpenses}
+          data={feedItems}
           keyExtractor={item => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
           ListEmptyComponent={<EmptyState icon="credit-card" title="No expenses yet" subtitle="Add your first expense to start splitting" />}
-          renderItem={({ item }) => renderExpenseItem(item)}
+          renderItem={({ item }) => item.type === "expense" ? renderExpenseItem(item.data) : renderSettlementItem(item.data)}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
         />
       ) : tab === "balances" ? (
         <View style={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100, flex: 1 }]}>
@@ -621,6 +804,14 @@ export default function GroupDetailScreen() {
         <ScrollView
           contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100, gap: 16 }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
         >
           <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.chartTitle, { color: colors.text }]}>Cumulative spending</Text>
@@ -725,6 +916,91 @@ export default function GroupDetailScreen() {
         </Pressable>
       </Modal>
 
+      {/* Trip Dates & Reminders Modal */}
+      <Modal
+        visible={showTripDatesModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTripDatesModal(false)}
+      >
+        <Pressable style={styles.settleOverlay} onPress={() => setShowTripDatesModal(false)}>
+          <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0 }]} onPress={e => e.stopPropagation()}>
+            <View style={[styles.tripModalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Trip Dates & Reminders</Text>
+              <Pressable onPress={() => setShowTripDatesModal(false)}>
+                <Feather name="x" size={20} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.tripModalBody}
+              contentContainerStyle={{ paddingBottom: 8 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <DatePickerField
+                label="Start Date"
+                value={tripStartInput}
+                onChange={setTripStartInput}
+                colors={colors}
+                forceClose={activeCalendar === "end"}
+                onOpen={() => setActiveCalendar("start")}
+              />
+
+              <View style={{ height: 16 }} />
+
+              <DatePickerField
+                label="End Date"
+                value={tripEndInput}
+                onChange={setTripEndInput}
+                colors={colors}
+                forceClose={activeCalendar === "start"}
+                onOpen={() => setActiveCalendar("end")}
+              />
+
+              <View style={[styles.tripRemindersSection, { borderTopColor: colors.border }]}>
+                <Text style={[styles.tripModalLabel, { color: colors.textSecondary }]}>Remind me N days before trip starts</Text>
+                <View style={[styles.tripModalInput, { borderColor: colors.border, backgroundColor: colors.inputBg, width: 80 }]}>
+                  <TextInput
+                    style={[styles.tripModalInputText, { color: colors.text, textAlign: "center" }]}
+                    value={tripStartReminderInput}
+                    onChangeText={setTripStartReminderInput}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                </View>
+
+                <Text style={[styles.tripModalLabel, { color: colors.textSecondary, marginTop: 12 }]}>Settle-up reminder every N days after trip ends</Text>
+                <View style={[styles.tripModalInput, { borderColor: colors.border, backgroundColor: colors.inputBg, width: 80 }]}>
+                  <TextInput
+                    style={[styles.tripModalInputText, { color: colors.text, textAlign: "center" }]}
+                    value={settleUpReminderInput}
+                    onChangeText={setSettleUpReminderInput}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.settleSheetActions, { paddingHorizontal: 16, paddingBottom: 20 }]}>
+              <Pressable
+                style={[styles.settleSheetBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => setShowTripDatesModal(false)}
+              >
+                <Text style={[styles.settleSheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.settleSheetBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                onPress={saveTripDates}
+              >
+                <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Settle All Confirmation Modal */}
       <Modal
         visible={showSettleAllConfirm}
@@ -777,6 +1053,14 @@ export default function GroupDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Member profile sheet */}
+      <MemberProfileSheet
+        memberId={profileMemberId}
+        groupId={id}
+        visible={profileMemberId !== null}
+        onClose={() => setProfileMemberId(null)}
+      />
     </View>
   );
 }
@@ -909,8 +1193,28 @@ const styles = StyleSheet.create({
   settleAllSummaryLabel: { fontSize: 14, fontFamily: "Inter_400Regular" },
   settleAllSummaryValue: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   settleAllDivider: { height: 1 },
+  notInvolvedPill: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+  notInvolvedText: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  settleFeedIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  tripDatesBar: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginHorizontal: 16, marginTop: 10, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  tripDatesText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  tripModalHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1,
+  },
+  tripModalBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, flexShrink: 1 },
+  tripModalLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 },
+  tripModalInput: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 44,
+  },
+  tripModalInputText: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  tripRemindersSection: { borderTopWidth: 1, marginTop: 16, paddingTop: 16 },
   settleOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: 24 },
-  settleSheet: { width: "100%", borderRadius: 20, padding: 24, gap: 12 },
+  settleSheet: { width: "100%", borderRadius: 20, padding: 24, gap: 12, maxHeight: "88%" },
   settleSheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   settleSheetSub: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
   settleSheetLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6 },

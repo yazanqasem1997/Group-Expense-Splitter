@@ -14,10 +14,6 @@ const AnyTrigger = NativeTabs.Trigger as any;
 function NativeTabLayout() {
   return (
     <NativeTabs>
-      <AnyTrigger name="index" onPress={() => scrollRegistry.trigger("index")}>
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Groups</Label>
-      </AnyTrigger>
       <AnyTrigger name="activity" onPress={() => scrollRegistry.trigger("activity")}>
         <Icon sf={{ default: "list.bullet", selected: "list.bullet" }} />
         <Label>Activity</Label>
@@ -25,6 +21,10 @@ function NativeTabLayout() {
       <AnyTrigger name="analytics" onPress={() => scrollRegistry.trigger("analytics")}>
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
         <Label>Stats</Label>
+      </AnyTrigger>
+      <AnyTrigger name="index" onPress={() => scrollRegistry.trigger("index")}>
+        <Icon sf={{ default: "house", selected: "house.fill" }} />
+        <Label>Groups</Label>
       </AnyTrigger>
       <AnyTrigger name="friends" onPress={() => scrollRegistry.trigger("friends")}>
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
@@ -77,19 +77,6 @@ function ClassicTabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
-        options={{
-          title: "Groups",
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="house" tintColor={color} size={24} />
-            ) : (
-              <Feather name="home" size={22} color={color} />
-            ),
-        }}
-        listeners={{ tabPress: () => scrollRegistry.trigger("index") }}
-      />
-      <Tabs.Screen
         name="activity"
         options={{
           title: "Activity",
@@ -114,6 +101,19 @@ function ClassicTabLayout() {
             ),
         }}
         listeners={{ tabPress: () => scrollRegistry.trigger("analytics") }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "Groups",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="house" tintColor={color} size={24} />
+            ) : (
+              <Feather name="home" size={22} color={color} />
+            ),
+        }}
+        listeners={{ tabPress: () => scrollRegistry.trigger("index") }}
       />
       <Tabs.Screen
         name="friends"

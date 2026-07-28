@@ -1,8 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-
+  ActivityIndicator,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -22,13 +24,18 @@ import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollV
 import { Member, useApp } from "@/context/AppContext";
 import { CURRENT_USER_ID_EXPORT } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
+import { timeAgo } from "@/utils/format";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function FriendsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { members, currentUser, getGroupBalances, groups, addMember, checkAndAddRecurring, fetchExchangeRates } = useApp();
+  const {
+    members, currentUser, getGroupBalances, groups,
+    addMember, updateMember,
+    checkAndAddRecurring, fetchExchangeRates,
+  } = useApp();
 
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
@@ -37,6 +44,7 @@ export default function FriendsScreen() {
     });
     return () => scrollRegistry.unregister("friends");
   }, []);
+
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -45,10 +53,19 @@ export default function FriendsScreen() {
     setRefreshing(false);
   }, [checkAndAddRecurring, fetchExchangeRates]);
 
+  // Add-friend form
   const [showAdd, setShowAdd] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [emailError, setEmailError] = useState("");
+
+  // Contact-edit sheet
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editPhoto, setEditPhoto] = useState<string | undefined>(undefined);
+  const [photoLoading, setPhotoLoading] = useState(false);
 
   const activeFriends = members.filter(m => !m.isCurrentUser && !m.isPending);
   const pendingFriends = members.filter(m => !m.isCurrentUser && m.isPending);
@@ -69,6 +86,8 @@ export default function FriendsScreen() {
   }, [groups, getGroupBalances, currentUser]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+
+  // ── add-friend ─────────────────────────────────────────────────────────────
 
   function handleAddFriend() {
     const trimmedEmail = email.trim();
@@ -91,19 +110,96 @@ export default function FriendsScreen() {
     );
   }
 
+  // ── contact-edit sheet ─────────────────────────────────────────────────────
+
+  function openEditSheet(member: Member) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEditingMember(member);
+    setEditName(member.name);
+    setEditEmail(member.email ?? "");
+    setEditPhone(member.phone ?? "");
+    setEditPhoto(member.photo);
+  }
+
+  function closeEditSheet() {
+    setEditingMember(null);
+    setPhotoLoading(false);
+  }
+
+  async function handlePickPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      showAlert("Permission needed", "Allow photo library access to set a contact photo.");
+      return;
+    }
+    setPhotoLoading(true);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    setPhotoLoading(false);
+    if (!result.canceled) setEditPhoto(result.assets[0].uri);
+  }
+
+  function handleSaveContact() {
+    if (!editingMember) return;
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      showAlert("Name required", "Please enter a name for this contact.");
+      return;
+    }
+    updateMember(editingMember.id, {
+      name: trimmedName,
+      email: editEmail.trim() || undefined,
+      phone: editPhone.trim() || undefined,
+      photo: editPhoto,
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    closeEditSheet();
+  }
+
+  function handleRemovePhoto() {
+    setEditPhoto(undefined);
+  }
+
+  // ── render helpers ─────────────────────────────────────────────────────────
+
   function renderActiveFriend(member: Member) {
     const balance = friendBalances[member.id] ?? 0;
     const isSettled = Math.abs(balance) < 0.01;
     return (
-      <View key={member.id} style={[styles.friendCard, { backgroundColor: colors.surface }]}>
-        <Avatar name={member.name} color={member.avatarColor} size={46} />
+      <Pressable
+        key={member.id}
+        style={({ pressed }) => [styles.friendCard, { backgroundColor: colors.surface, opacity: pressed ? 0.93 : 1 }]}
+        onPress={() => openEditSheet(member)}
+      >
+        <View style={styles.avatarWrap}>
+          <Avatar name={member.name} color={member.avatarColor} size={46} imageUri={member.photo} />
+          {member.photo && (
+            <View style={[styles.photoIndicator, { backgroundColor: colors.primary }]} />
+          )}
+        </View>
         <View style={styles.friendInfo}>
           <Text style={[styles.friendName, { color: colors.text }]}>{member.name}</Text>
           {member.email ? (
-            <Text style={[styles.friendEmail, { color: colors.textSecondary }]}>{member.email}</Text>
+            <Text style={[styles.friendMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+              {member.email}
+            </Text>
+          ) : null}
+          {member.phone ? (
+            <Text style={[styles.friendMeta, { color: colors.textTertiary }]} numberOfLines={1}>
+              {member.phone}
+            </Text>
+          ) : null}
+          {member.joinedAt ? (
+            <Text style={[styles.friendJoined, { color: colors.textTertiary }]}>
+              Joined {timeAgo(member.joinedAt)}
+            </Text>
           ) : null}
         </View>
-        <View style={styles.friendBalance}>
+        <View style={styles.friendRight}>
           {isSettled ? (
             <Text style={[styles.settledText, { color: colors.textTertiary }]}>Settled up</Text>
           ) : (
@@ -116,8 +212,9 @@ export default function FriendsScreen() {
               </Text>
             </>
           )}
+          <Feather name="chevron-right" size={14} color={colors.border} style={{ marginTop: 4 }} />
         </View>
-      </View>
+      </Pressable>
     );
   }
 
@@ -125,7 +222,7 @@ export default function FriendsScreen() {
     return (
       <View key={member.id} style={[styles.pendingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.pendingLeft}>
-          <Avatar name={member.name} color={member.avatarColor} size={42} />
+          <Avatar name={member.name} color={member.avatarColor} size={42} imageUri={member.photo} />
           <View style={styles.pendingInfo}>
             <View style={styles.pendingNameRow}>
               <Text style={[styles.friendName, { color: colors.text }]}>{member.name}</Text>
@@ -134,7 +231,7 @@ export default function FriendsScreen() {
               </View>
             </View>
             {member.email ? (
-              <Text style={[styles.friendEmail, { color: colors.textSecondary }]}>{member.email}</Text>
+              <Text style={[styles.friendMeta, { color: colors.textSecondary }]}>{member.email}</Text>
             ) : null}
           </View>
         </View>
@@ -148,6 +245,8 @@ export default function FriendsScreen() {
       </View>
     );
   }
+
+  // ── main render ────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -241,7 +340,7 @@ export default function FriendsScreen() {
           </KeyboardAwareScrollViewCompat>
         )}
 
-        {/* Active friends section */}
+        {/* Active friends */}
         {activeFriends.length > 0 && (
           <View style={styles.section}>
             <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>
@@ -251,7 +350,7 @@ export default function FriendsScreen() {
           </View>
         )}
 
-        {/* Pending invitations section */}
+        {/* Pending invitations */}
         {pendingFriends.length > 0 && (
           <View style={styles.section}>
             <Text style={[styles.sectionHeader, { color: colors.textTertiary }]}>
@@ -264,7 +363,6 @@ export default function FriendsScreen() {
           </View>
         )}
 
-        {/* Empty state */}
         {activeFriends.length === 0 && pendingFriends.length === 0 && !showAdd && (
           <EmptyState
             icon="users"
@@ -273,6 +371,149 @@ export default function FriendsScreen() {
           />
         )}
       </ScrollView>
+
+      {/* ── Contact edit sheet ─────────────────────────────────────────────── */}
+      <Modal
+        visible={editingMember !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeEditSheet}
+      >
+        <Pressable style={styles.sheetOverlay} onPress={closeEditSheet}>
+          <Pressable
+            style={[styles.editSheet, { backgroundColor: colors.surface }]}
+            onPress={e => e.stopPropagation()}
+          >
+            {/* Handle */}
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+
+            {/* Header */}
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>Edit Contact</Text>
+              <Pressable onPress={closeEditSheet}>
+                <Feather name="x" size={20} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.sheetBody}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Avatar picker */}
+              <View style={styles.avatarPickerRow}>
+                <Pressable style={styles.avatarPickerBtn} onPress={handlePickPhoto} disabled={photoLoading}>
+                  {photoLoading ? (
+                    <View style={[styles.avatarPickerCircle, { backgroundColor: colors.border }]}>
+                      <ActivityIndicator color={colors.primary} />
+                    </View>
+                  ) : (
+                    <View style={styles.avatarPickerCircle}>
+                      <Avatar
+                        name={editName || editingMember?.name || "?"}
+                        color={editingMember?.avatarColor ?? "#ccc"}
+                        size={72}
+                        imageUri={editPhoto}
+                      />
+                      <View style={[styles.cameraOverlay, { backgroundColor: colors.primary }]}>
+                        <Feather name="camera" size={13} color="#fff" />
+                      </View>
+                    </View>
+                  )}
+                </Pressable>
+                <View style={styles.avatarPickerLabels}>
+                  <Text style={[styles.avatarPickerTitle, { color: colors.text }]}>Profile photo</Text>
+                  <Text style={[styles.avatarPickerSub, { color: colors.textSecondary }]}>
+                    Tap avatar to pick from library
+                  </Text>
+                  {editPhoto ? (
+                    <Pressable onPress={handleRemovePhoto}>
+                      <Text style={[styles.removePhotoText, { color: colors.danger }]}>Remove photo</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Name */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Name</Text>
+                <View style={[styles.fieldInput, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <Feather name="user" size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={[styles.fieldText, { color: colors.text }]}
+                    value={editName}
+                    onChangeText={setEditName}
+                    placeholder="Full name"
+                    placeholderTextColor={colors.textTertiary}
+                    autoCapitalize="words"
+                  />
+                </View>
+              </View>
+
+              {/* Email */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Email</Text>
+                <View style={[styles.fieldInput, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <Feather name="mail" size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={[styles.fieldText, { color: colors.text }]}
+                    value={editEmail}
+                    onChangeText={setEditEmail}
+                    placeholder="Email address"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
+
+              {/* Phone */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Phone</Text>
+                <View style={[styles.fieldInput, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <Feather name="phone" size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={[styles.fieldText, { color: colors.text }]}
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    placeholder="+1 234 567 8900"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+              </View>
+
+              {/* Joined */}
+              {editingMember?.joinedAt ? (
+                <View style={[styles.joinedRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Feather name="calendar" size={14} color={colors.textTertiary} />
+                  <Text style={[styles.joinedText, { color: colors.textTertiary }]}>
+                    Added {timeAgo(editingMember.joinedAt)}
+                  </Text>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={styles.sheetActions}>
+              <Pressable
+                style={[styles.sheetBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={closeEditSheet}
+              >
+                <Text style={[styles.sheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.sheetBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                onPress={handleSaveContact}
+              >
+                <Feather name="check" size={16} color="#fff" />
+                <Text style={[styles.sheetBtnText, { color: "#fff" }]}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -359,12 +600,24 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  friendInfo: { flex: 1 },
+  avatarWrap: { position: "relative" },
+  photoIndicator: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  friendInfo: { flex: 1, gap: 2 },
   friendName: { fontSize: 16, fontFamily: "Inter_500Medium" },
-  friendEmail: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  friendBalance: { alignItems: "flex-end" },
+  friendMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  friendJoined: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+  friendRight: { alignItems: "flex-end", gap: 2 },
   settledText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  balanceLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 2 },
+  balanceLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
   balanceAmount: { fontSize: 15, fontFamily: "Inter_700Bold" },
   pendingCard: {
     flexDirection: "row",
@@ -391,4 +644,89 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   resendText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+
+  // Sheet
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  editSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingTop: 12,
+    maxHeight: "90%",
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 14,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  sheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  sheetBody: { gap: 16, paddingBottom: 8 },
+  avatarPickerRow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  avatarPickerBtn: {},
+  avatarPickerCircle: { position: "relative" },
+  cameraOverlay: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  avatarPickerLabels: { flex: 1, gap: 4 },
+  avatarPickerTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  avatarPickerSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  removePhotoText: { fontSize: 12, fontFamily: "Inter_500Medium", marginTop: 4 },
+  fieldGroup: { gap: 6 },
+  fieldLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6 },
+  fieldInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+  },
+  fieldText: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  joinedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  joinedText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  sheetActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+  },
+  sheetBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+    borderWidth: 1,
+  },
+  sheetBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });

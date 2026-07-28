@@ -6,11 +6,11 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-
   LayoutAnimation,
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -164,6 +164,7 @@ export default function AccountScreen() {
     defaultCurrency, setDefaultCurrency,
     exchangeRates, ratesUpdated, fetchExchangeRates,
     notifPrefs, updateNotifPref,
+    checkAndAddRecurring,
   } = useApp();
   const { biometricEnabled, setBiometricEnabled, biometricAvailable, biometricType, unlock } = useBiometric();
 
@@ -175,6 +176,7 @@ export default function AccountScreen() {
 
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [currencySearch, setCurrencySearch] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const [refreshingRates, setRefreshingRates] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
@@ -198,6 +200,13 @@ export default function AccountScreen() {
     );
   }
 
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    checkAndAddRecurring();
+    await fetchExchangeRates().catch(() => {});
+    setRefreshing(false);
+  }, [checkAndAddRecurring, fetchExchangeRates]);
 
   const handleRefreshRates = useCallback(async () => {
     setRefreshingRates(true);
@@ -254,6 +263,14 @@ export default function AccountScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
     >
       <View style={[styles.header, { paddingTop: topPad + 16 }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Account</Text>

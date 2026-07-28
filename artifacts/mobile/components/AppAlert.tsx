@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -33,96 +34,93 @@ export function AppAlert() {
     [dismiss]
   );
 
-  if (!config) return null;
-
-  const hasCancelButton = config.buttons.some(b => b.style === "cancel");
-  const stacked = config.buttons.length > 2;
+  const hasCancelButton = config?.buttons.some(b => b.style === "cancel") ?? false;
+  const stacked = (config?.buttons.length ?? 0) > 2;
 
   return (
-    <View style={styles.root} pointerEvents="box-none">
+    <Modal
+      visible={!!config}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={() => hasCancelButton && dismiss()}
+    >
       <Pressable
         style={styles.overlay}
         onPress={() => hasCancelButton && dismiss()}
-      />
-      <View style={styles.cardWrap} pointerEvents="box-none">
-        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+      >
+        <Pressable style={[styles.card, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
           <Text style={[styles.title, { color: colors.text }]}>
-            {config.title}
+            {config?.title ?? ""}
           </Text>
-          {!!config.message && (
+          {!!config?.message && (
             <Text style={[styles.message, { color: colors.textSecondary }]}>
               {config.message}
             </Text>
           )}
 
-          <View
-            style={[
-              styles.buttonRow,
-              stacked && styles.buttonColumn,
-              { borderTopColor: colors.border },
-            ]}
-          >
-            {config.buttons.map((btn, i) => {
-              const isDestructive = btn.style === "destructive";
-              const isCancel = btn.style === "cancel";
-              const isLast = i === config.buttons.length - 1;
+          {config && (
+            <View
+              style={[
+                styles.buttonRow,
+                stacked && styles.buttonColumn,
+                { borderTopColor: colors.border },
+              ]}
+            >
+              {config.buttons.map((btn, i) => {
+                const isDestructive = btn.style === "destructive";
+                const isCancel = btn.style === "cancel";
+                const isLast = i === config.buttons.length - 1;
 
-              const btnColor = isDestructive
-                ? "#F4615C"
-                : isCancel
-                ? colors.textSecondary
-                : colors.primary;
+                const btnColor = isDestructive
+                  ? "#F4615C"
+                  : isCancel
+                  ? colors.textSecondary
+                  : colors.primary;
 
-              return (
-                <Pressable
-                  key={i}
-                  style={({ pressed }) => [
-                    styles.button,
-                    stacked ? styles.buttonFull : styles.buttonHalf,
-                    !stacked && i < config.buttons.length - 1 && {
-                      borderRightWidth: StyleSheet.hairlineWidth,
-                      borderRightColor: colors.border,
-                    },
-                    stacked && !isLast && {
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                      borderBottomColor: colors.border,
-                    },
-                    pressed && { backgroundColor: colors.background + "66" },
-                  ]}
-                  onPress={() => handleButton(btn.onPress)}
-                >
-                  <Text
-                    style={[
-                      styles.buttonText,
-                      { color: btnColor },
-                      isCancel && styles.buttonTextCancel,
-                      isDestructive && styles.buttonTextDestructive,
+                return (
+                  <Pressable
+                    key={i}
+                    style={({ pressed }) => [
+                      styles.button,
+                      stacked ? styles.buttonFull : styles.buttonHalf,
+                      !stacked && i < config.buttons.length - 1 && {
+                        borderRightWidth: StyleSheet.hairlineWidth,
+                        borderRightColor: colors.border,
+                      },
+                      stacked && !isLast && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: colors.border,
+                      },
+                      pressed && { backgroundColor: colors.background + "66" },
                     ]}
+                    onPress={() => handleButton(btn.onPress)}
                   >
-                    {btn.text}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </View>
-    </View>
+                    <Text
+                      style={[
+                        styles.buttonText,
+                        { color: btnColor },
+                        isCancel && styles.buttonTextCancel,
+                        isDestructive && styles.buttonTextDestructive,
+                      ]}
+                    >
+                      {btn.text}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 9999,
-    elevation: 99,
-  },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  cardWrap: {
-    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
     padding: 32,
