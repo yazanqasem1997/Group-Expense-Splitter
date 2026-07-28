@@ -18,7 +18,7 @@ import { AmountText } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
-import { Expense, Settlement, useApp } from "@/context/AppContext";
+import { AppNotification, Expense, Settlement, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
@@ -37,15 +37,23 @@ const TYPE_FILTERS: { value: TypeFilter; label: string; icon: string }[] = [
 export default function ActivityScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { expenses, settlements, getMemberById, getGroupById, currentUser, checkAndAddRecurring, fetchExchangeRates } = useApp();
+  const {
+    expenses, settlements, getMemberById, getGroupById, currentUser,
+    checkAndAddRecurring, fetchExchangeRates,
+    notifications, unreadNotificationCount, markAllNotificationsRead,
+    checkAndSendGroupReminders,
+  } = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     checkAndAddRecurring();
+    checkAndSendGroupReminders();
     await fetchExchangeRates().catch(() => {});
     setRefreshing(false);
-  }, [checkAndAddRecurring, fetchExchangeRates]);
+  }, [checkAndAddRecurring, checkAndSendGroupReminders, fetchExchangeRates]);
 
   const { filter } = useLocalSearchParams<{ filter?: string }>();
   const [query, setQuery] = useState("");
@@ -152,7 +160,7 @@ export default function ActivityScreen() {
           {highlightText(expense.description, [styles.cardTitle, { color: colors.text }])}
           <View style={styles.cardMetaRow}>
             {payer && (
-              <Avatar name={payer.name} color={payer.avatarColor} size={14} style={{ marginRight: 4 }} />
+              <Avatar name={payer.name} color={payer.avatarColor} size={14} style={{ marginRight: 4 }} imageUri={payer.photo} />
             )}
             <Text style={[styles.cardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
               {youPaid ? "You" : payer?.name ?? "Someone"} · {highlightText(group?.name ?? "", [styles.cardMeta, { color: colors.textSecondary }])}
@@ -288,6 +296,40 @@ export default function ActivityScreen() {
         </View>
       </View>
 
+      {/* Notification banner */}
+      {unreadNotificationCount > 0 && (
+        <Pressable
+          style={[styles.notifBanner, { backgroundColor: colors.primary }]}
+          onPress={() => { setShowNotifs(v => !v); if (!showNotifs) markAllNotificationsRead(); }}
+        >
+          <View style={styles.notifBannerLeft}>
+            <View style={[styles.notifBell, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
+              <Feather name="bell" size={14} color="#fff" />
+              <View style={styles.notifDot} />
+            </View>
+            <Text style={styles.notifBannerText}>
+              {unreadNotificationCount} new nudge{unreadNotificationCount > 1 ? "s" : ""}
+            </Text>
+          </View>
+          <Feather name={showNotifs ? "chevron-up" : "chevron-down"} size={16} color="#fff" />
+        </Pressable>
+      )}
+      {showNotifs && notifications.length > 0 && (
+        <View style={[styles.notifList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {notifications.slice(0, 5).map(n => (
+            <View key={n.id} style={[styles.notifItem, { borderBottomColor: colors.border }]}>
+              <Text style={styles.notifItemEmoji}>
+                {n.tone === "friendly" ? "👋" : n.tone === "urgent" ? "🚨" : "⏰"}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.notifItemTitle, { color: colors.text }]}>{n.title}</Text>
+                <Text style={[styles.notifItemBody, { color: colors.textSecondary }]}>{n.body}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       <FlatList
         ref={listRef}
         data={filteredItems}
@@ -368,6 +410,16 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   filterRow: { flexDirection: "row", gap: 7, paddingHorizontal: 2 },
+  notifBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 10 },
+  notifBannerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  notifBell: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  notifDot: { position: "absolute", top: 3, right: 3, width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#FFD600", borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" },
+  notifBannerText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  notifList: { borderWidth: 1, borderTopWidth: 0, gap: 0 },
+  notifItem: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 14, paddingVertical: 12, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  notifItemEmoji: { fontSize: 20, marginTop: 1 },
+  notifItemTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  notifItemBody: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
   filterChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 11, paddingVertical: 7,

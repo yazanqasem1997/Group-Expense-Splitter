@@ -13,6 +13,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -26,7 +27,7 @@ import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
-import { Expense, GroupMessage, Settlement, useApp } from "@/context/AppContext";
+import { Expense, GroupMessage, NudgeTone, Settlement, useApp } from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
@@ -47,7 +48,7 @@ export default function GroupDetailScreen() {
     currentUser, deleteGroup, deleteExpense, deleteSettlement,
     addSettlement, addSettlements, archiveGroup, unarchiveGroup,
     addGroupMessage, getGroupMessages, updateGroup,
-    checkAndAddRecurring, fetchExchangeRates,
+    checkAndAddRecurring, fetchExchangeRates, checkAndSendGroupReminders,
   } = useApp();
 
   const [tab, setTab] = useState<Tab>("expenses");
@@ -79,6 +80,13 @@ export default function GroupDetailScreen() {
   const [tripStartReminderInput, setTripStartReminderInput] = useState("2");
   const [settleUpReminderInput, setSettleUpReminderInput] = useState("7");
   const [activeCalendar, setActiveCalendar] = useState<"start" | "end" | null>(null);
+
+  // Nudge campaign state
+  const [nudgeActive, setNudgeActive] = useState(false);
+  const [nudgeStartDays, setNudgeStartDays] = useState("3");
+  const [nudgeFreqDays, setNudgeFreqDays] = useState("7");
+  const [nudgeMaxNudges, setNudgeMaxNudges] = useState("5");
+  const [nudgeTone, setNudgeTone] = useState<NudgeTone>("friendly");
 
   const group = getGroupById(id);
   const groupExpenses = getGroupExpenses(id);
@@ -201,6 +209,12 @@ export default function GroupDetailScreen() {
     setTripEndInput(group?.endDate ?? "");
     setTripStartReminderInput(String(group?.tripStartReminderDays ?? 2));
     setSettleUpReminderInput(String(group?.settleUpReminderDays ?? 7));
+    const campaign = group?.nudgeCampaign;
+    setNudgeActive(campaign?.isActive ?? false);
+    setNudgeStartDays(String(campaign?.startDaysAfterEnd ?? 3));
+    setNudgeFreqDays(String(campaign?.frequencyDays ?? 7));
+    setNudgeMaxNudges(String(campaign?.maxNudges ?? 5));
+    setNudgeTone(campaign?.tone ?? "friendly");
     setActiveCalendar(null);
     setShowTripDatesModal(true);
   }
@@ -212,6 +226,15 @@ export default function GroupDetailScreen() {
       endDate: tripEndInput.trim() || undefined,
       tripStartReminderDays: parseInt(tripStartReminderInput) || undefined,
       settleUpReminderDays: parseInt(settleUpReminderInput) || undefined,
+      nudgeCampaign: nudgeActive ? {
+        isActive: true,
+        startDaysAfterEnd: parseInt(nudgeStartDays) || 3,
+        frequencyDays: parseInt(nudgeFreqDays) || 7,
+        maxNudges: parseInt(nudgeMaxNudges) || 5,
+        nudgesSent: group.nudgeCampaign?.nudgesSent ?? 0,
+        tone: nudgeTone,
+        lastNudgeAt: group.nudgeCampaign?.lastNudgeAt,
+      } : undefined,
     });
     setShowTripDatesModal(false);
   }
@@ -347,6 +370,9 @@ export default function GroupDetailScreen() {
             {expense.description}
           </Text>
           <View style={styles.expenseMetaRow}>
+            {!youPaid && payer && (
+              <Avatar name={payer.name} color={payer.avatarColor} size={14} imageUri={payer.photo} style={{ marginRight: 4 }} />
+            )}
             <Text style={[styles.expenseMeta, { color: colors.textSecondary }]}>
               {youPaid ? "You" : payer?.name ?? "Someone"} paid · {timeAgo(expense.createdAt)}
             </Text>
@@ -461,7 +487,7 @@ export default function GroupDetailScreen() {
 
           return (
             <View key={`${debt.fromId}_${debt.toId}`} style={[styles.debtCard, { backgroundColor: colors.surface }]}>
-              <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? "#ccc"} size={40} />
+              <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? "#ccc"} size={40} imageUri={from?.photo} />
               <View style={styles.debtBody}>
                 <Text style={[styles.debtText, { color: colors.text }]}>
                   <Text style={{ fontFamily: "Inter_600SemiBold" }}>{isMyDebt ? "You" : from?.name}</Text>
@@ -524,7 +550,7 @@ export default function GroupDetailScreen() {
             return (
               <View style={[styles.chatRow, isMe && styles.chatRowMe]}>
                 {!isMe && (
-                  <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={28} />
+                  <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={28} imageUri={author?.photo} />
                 )}
                 <View style={styles.chatBubbleWrap}>
                   {!isMe && (
@@ -988,6 +1014,106 @@ export default function GroupDetailScreen() {
                   />
                 </View>
               </View>
+
+              {/* ── Nudge Campaign ─────────────────────────────────── */}
+              <View style={[styles.nudgeSection, { borderTopColor: colors.border }]}>
+                <View style={styles.nudgeSectionHeader}>
+                  <View>
+                    <Text style={[styles.nudgeSectionTitle, { color: colors.text }]}>Settlement Nudge Campaign</Text>
+                    <Text style={[styles.nudgeSectionSub, { color: colors.textTertiary }]}>
+                      Automatically remind the group after the trip ends
+                    </Text>
+                  </View>
+                  <Switch
+                    value={nudgeActive}
+                    onValueChange={v => { setNudgeActive(v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
+                {nudgeActive && (
+                  <>
+                    {/* Tone picker */}
+                    <Text style={[styles.nudgeLabel, { color: colors.textSecondary }]}>Nudge tone</Text>
+                    <View style={styles.nudgeToneRow}>
+                      {([
+                        { tone: "friendly", emoji: "👋", label: "Friendly", desc: "Gentle reminder" },
+                        { tone: "firm",     emoji: "⏰", label: "Firm",     desc: "Direct & clear"  },
+                        { tone: "urgent",   emoji: "🚨", label: "Urgent",   desc: "Strong push"     },
+                      ] as { tone: NudgeTone; emoji: string; label: string; desc: string }[]).map(t => (
+                        <Pressable
+                          key={t.tone}
+                          style={[
+                            styles.nudgeToneCard,
+                            {
+                              backgroundColor: nudgeTone === t.tone ? colors.primaryLight : colors.background,
+                              borderColor: nudgeTone === t.tone ? colors.primary : colors.border,
+                            },
+                          ]}
+                          onPress={() => { setNudgeTone(t.tone); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                        >
+                          <Text style={styles.nudgeToneEmoji}>{t.emoji}</Text>
+                          <Text style={[styles.nudgeToneLabel, { color: nudgeTone === t.tone ? colors.primary : colors.text }]}>{t.label}</Text>
+                          <Text style={[styles.nudgeToneDesc, { color: colors.textTertiary }]}>{t.desc}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+
+                    {/* Timing controls */}
+                    <View style={styles.nudgeTimingRow}>
+                      <View style={styles.nudgeTimingItem}>
+                        <Text style={[styles.nudgeLabel, { color: colors.textSecondary }]}>Start after end</Text>
+                        <View style={[styles.nudgeInput, { borderColor: colors.border, backgroundColor: colors.inputBg }]}>
+                          <TextInput
+                            style={[styles.nudgeInputText, { color: colors.text }]}
+                            value={nudgeStartDays}
+                            onChangeText={setNudgeStartDays}
+                            keyboardType="number-pad"
+                            maxLength={2}
+                          />
+                          <Text style={[styles.nudgeInputUnit, { color: colors.textTertiary }]}>days</Text>
+                        </View>
+                      </View>
+                      <View style={styles.nudgeTimingItem}>
+                        <Text style={[styles.nudgeLabel, { color: colors.textSecondary }]}>Repeat every</Text>
+                        <View style={[styles.nudgeInput, { borderColor: colors.border, backgroundColor: colors.inputBg }]}>
+                          <TextInput
+                            style={[styles.nudgeInputText, { color: colors.text }]}
+                            value={nudgeFreqDays}
+                            onChangeText={setNudgeFreqDays}
+                            keyboardType="number-pad"
+                            maxLength={2}
+                          />
+                          <Text style={[styles.nudgeInputUnit, { color: colors.textTertiary }]}>days</Text>
+                        </View>
+                      </View>
+                      <View style={styles.nudgeTimingItem}>
+                        <Text style={[styles.nudgeLabel, { color: colors.textSecondary }]}>Stop after</Text>
+                        <View style={[styles.nudgeInput, { borderColor: colors.border, backgroundColor: colors.inputBg }]}>
+                          <TextInput
+                            style={[styles.nudgeInputText, { color: colors.text }]}
+                            value={nudgeMaxNudges}
+                            onChangeText={setNudgeMaxNudges}
+                            keyboardType="number-pad"
+                            maxLength={2}
+                          />
+                          <Text style={[styles.nudgeInputUnit, { color: colors.textTertiary }]}>nudges</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={[styles.nudgePreview, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <Feather name="info" size={13} color={colors.primary} />
+                      <Text style={[styles.nudgePreviewText, { color: colors.textSecondary }]}>
+                        First nudge {nudgeStartDays} day{nudgeStartDays !== "1" ? "s" : ""} after trip ends,
+                        then every {nudgeFreqDays} day{nudgeFreqDays !== "1" ? "s" : ""} — up to {nudgeMaxNudges} times.
+                        Stops automatically once everyone settles up.
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
             </ScrollView>
 
             <View style={[styles.settleSheetActions, { paddingHorizontal: 16, paddingBottom: 20 }]}>
@@ -1236,4 +1362,21 @@ const styles = StyleSheet.create({
   settleSheetActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   settleSheetBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center", borderWidth: 1 },
   settleSheetBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  nudgeSection: { borderTopWidth: 1, marginTop: 20, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 8, gap: 14 },
+  nudgeSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  nudgeSectionTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  nudgeSectionSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  nudgeLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6 },
+  nudgeToneRow: { flexDirection: "row", gap: 8 },
+  nudgeToneCard: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, gap: 3 },
+  nudgeToneEmoji: { fontSize: 20 },
+  nudgeToneLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  nudgeToneDesc: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  nudgeTimingRow: { flexDirection: "row", gap: 10 },
+  nudgeTimingItem: { flex: 1, gap: 6 },
+  nudgeInput: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, gap: 4 },
+  nudgeInputText: { flex: 1, fontSize: 16, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  nudgeInputUnit: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  nudgePreview: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12, borderRadius: 10, borderWidth: 1 },
+  nudgePreviewText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
 });

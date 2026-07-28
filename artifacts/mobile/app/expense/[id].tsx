@@ -60,10 +60,11 @@ export default function ExpenseDetailScreen() {
   const totalReactions = Object.values(reactions).reduce((s, ids) => s + ids.length, 0);
 
   // Format a raw audit field value for human-readable display
+  const expenseCurrency = expense.currency;
   function fmtAuditValue(field: string, raw: string): string {
     if (field === "amount") {
       const n = parseFloat(raw);
-      return isNaN(n) ? raw : formatAmount(n, expense?.currency);
+      return isNaN(n) ? raw : formatAmount(n, expenseCurrency);
     }
     if (field === "paidById") {
       const m = getMemberById(raw);
@@ -71,6 +72,7 @@ export default function ExpenseDetailScreen() {
     }
     return raw;
   }
+
 
   // Always have at least a synthetic "created" entry so history is never blank
   const effectiveAuditLog: AuditEntry[] =
@@ -216,7 +218,7 @@ export default function ExpenseDetailScreen() {
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Paid by</Text>
               <View style={styles.infoRight}>
-                <Avatar name={payer?.name ?? ""} color={payer?.avatarColor ?? "#ccc"} size={24} />
+                <Avatar name={payer?.name ?? ""} color={payer?.avatarColor ?? "#ccc"} size={24} imageUri={payer?.photo} />
                 <Text style={[styles.infoValue, { color: colors.text }]}>
                   {youPaid ? "You" : payer?.name}
                 </Text>
@@ -244,6 +246,7 @@ export default function ExpenseDetailScreen() {
                   name={loggedByMember?.name ?? currentUser.name}
                   color={loggedByMember?.avatarColor ?? currentUser.avatarColor}
                   size={24}
+                  imageUri={loggedByMember?.photo}
                 />
                 <Text style={[styles.infoValue, { color: colors.text }]}>
                   {youLogged ? "You" : loggedByMember?.name ?? "Unknown"}
@@ -264,7 +267,7 @@ export default function ExpenseDetailScreen() {
 
               return (
                 <View key={split.memberId} style={[styles.splitCard, { backgroundColor: colors.surface }]}>
-                  <Avatar name={member?.name ?? ""} color={member?.avatarColor ?? "#ccc"} size={40} />
+                  <Avatar name={member?.name ?? ""} color={member?.avatarColor ?? "#ccc"} size={40} imageUri={member?.photo} />
                   <View style={styles.splitBody}>
                     <Text style={[styles.splitName, { color: colors.text }]}>
                       {isMe ? "You" : member?.name}
@@ -319,6 +322,7 @@ export default function ExpenseDetailScreen() {
                           name={who?.name ?? "?"}
                           color={who?.avatarColor ?? "#ccc"}
                           size={34}
+                          imageUri={who?.photo}
                         />
                         <View style={[styles.auditActionBadge, { backgroundColor: actionBg }]}>
                           <Text style={[styles.auditActionText, { color: actionColor }]}>
@@ -377,7 +381,7 @@ export default function ExpenseDetailScreen() {
                     }]}>
                       {!isMe && (
                         <View style={styles.commentAuthorRow}>
-                          <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={18} />
+                          <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={18} imageUri={author?.photo} />
                           <Text style={[styles.commentAuthor, { color: colors.primary }]}>
                             {author?.name ?? "Unknown"}
                           </Text>

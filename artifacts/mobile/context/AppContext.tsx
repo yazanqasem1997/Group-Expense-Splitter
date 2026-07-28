@@ -104,9 +104,76 @@ export interface RecurringExpense {
   category: string;
   frequency: RecurringFrequency;
   customDays?: number;
+  dayOfWeek?: number;          // 0 = Sun … 6 = Sat; weekly/biweekly only
+  timeOfDay?: string;          // "HH:MM" local 24h
+  endType?: "never" | "count" | "date";
+  endCount?: number;           // stop after N firings
+  endDate?: string;            // ISO YYYY-MM-DD
+  occurrenceCount?: number;    // how many times fired so far
   nextDueAt: string;
   isActive: boolean;
   createdAt: string;
+}
+
+export type NudgeTone = "friendly" | "firm" | "urgent";
+
+export interface NudgeCampaign {
+  isActive: boolean;
+  startDaysAfterEnd: number;  // days after group endDate before first nudge
+  frequencyDays: number;      // how often to resend
+  maxNudges: number;          // stop after N nudges
+  nudgesSent: number;
+  tone: NudgeTone;
+  lastNudgeAt?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type: "settlement_reminder" | "recurring_fired";
+  groupId?: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+  tone?: NudgeTone;
+}
+
+/** Compute the next N upcoming dates for a recurring config. */
+export function computeNextOccurrences(
+  config: {
+    frequency: RecurringFrequency;
+    customDays?: number;
+    dayOfWeek?: number;
+    endType?: "never" | "count" | "date";
+    endCount?: number;
+    endDate?: string;
+    occurrenceCount?: number;
+    nextDueAt: string;
+  },
+  n: number
+): Date[] {
+  const results: Date[] = [];
+  const intervalDays =
+    config.frequency === "custom" && config.customDays
+      ? config.customDays
+      : RECURRING_FREQUENCY_DAYS[config.frequency];
+  let current = new Date(config.nextDueAt);
+  let count = config.occurrenceCount ?? 0;
+  while (results.length < n) {
+    if (config.endType === "count" && config.endCount !== undefined && count >= config.endCount) break;
+    if (config.endType === "date" && config.endDate && current > new Date(config.endDate + "T23:59:59")) break;
+    results.push(new Date(current));
+    count++;
+    current = new Date(current.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+    if (
+      config.dayOfWeek !== undefined &&
+      (config.frequency === "weekly" || config.frequency === "biweekly")
+    ) {
+      const diff = (config.dayOfWeek - current.getDay() + 7) % 7;
+      if (diff > 0) current = new Date(current.getTime() + diff * 24 * 60 * 60 * 1000);
+    }
+  }
+  return results;
 }
 
 export interface Expense {
@@ -167,6 +234,7 @@ export interface Group {
   endDate?: string;
   tripStartReminderDays?: number;
   settleUpReminderDays?: number;
+  nudgeCampaign?: NudgeCampaign;
 }
 
 export interface GroupInvitation {
@@ -252,6 +320,10 @@ interface AppContextType {
   updateRecurringExpense: (id: string, updates: Partial<RecurringExpense>) => void;
   deleteRecurringExpense: (id: string) => void;
   checkAndAddRecurring: () => number;
+  notifications: AppNotification[];
+  unreadNotificationCount: number;
+  markAllNotificationsRead: () => void;
+  checkAndSendGroupReminders: () => void;
   isLoading: boolean;
 }
 
@@ -259,6 +331,7 @@ export const CURRENT_USER_ID_EXPORT = "user_current";
 const STORAGE_KEY = "spliteasy_data_v3";
 const MESSAGES_KEY = "@spliteasy_messages";
 const RECURRING_KEY = "@spliteasy_recurring";
+const NOTIFICATIONS_KEY = "@spliteasy_notifications";
 
 const DEFAULT_AVATAR_COLORS = [
   "#FF6B35", "#7C3AED", "#0EA5E9", "#F59E0B",
@@ -1161,6 +1234,32 @@ const DEFAULT_NOTIF_PREFS: NotifPrefs = {
   reaction: true,
 };
 
+function buildNudgeMessage(
+  groupName: string,
+  pendingCount: number,
+  nudgeNum: number,
+  tone: NudgeTone
+): { title: string; body: string } {
+  const bal = `${pendingCount} balance${pendingCount > 1 ? "s" : ""}`;
+  if (tone === "friendly") {
+    return {
+      title: `👋 Time to settle up — ${groupName}`,
+      body: `${bal} in ${groupName} ${pendingCount > 1 ? "are" : "is"} still open. Wrap it up! 💸`,
+    };
+  }
+  if (tone === "urgent") {
+    return {
+      title: `🚨 Nudge #${nudgeNum}: ${groupName} still open`,
+      body: `${bal} ${pendingCount > 1 ? "remain" : "remains"} unsettled in ${groupName}. Time to close the books!`,
+    };
+  }
+  // firm (default)
+  return {
+    title: `⏰ Reminder #${nudgeNum} — ${groupName}`,
+    body: `${bal} in ${groupName} haven't been settled yet. Don't leave your friends waiting.`,
+  };
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
   const [currentUser, setCurrentUser] = useState<Member>(defaultCurrentUser);
@@ -1171,6 +1270,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [invitations, setInvitations] = useState<GroupInvitation[]>(defaultInvitations);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>(defaultGroupMessages);
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
   const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
@@ -1235,6 +1335,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const recurringStored = await AsyncStorage.getItem(RECURRING_KEY);
       if (recurringStored) setRecurringExpenses(JSON.parse(recurringStored));
+
+      const appNotifsStored = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
+      if (appNotifsStored) setNotifications(JSON.parse(appNotifsStored));
 
     } catch (e) {
     } finally {
@@ -1831,6 +1934,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [recurringExpenses, saveRecurring]
   );
 
+  const saveNotifications = useCallback(async (notifs: AppNotification[]) => {
+    try { await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifs)); } catch {}
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications(prev => {
+      const updated = prev.map(n => ({ ...n, read: true }));
+      saveNotifications(updated);
+      return updated;
+    });
+  }, [saveNotifications]);
+
+  const unreadNotificationCount = notifications.filter(n => !n.read).length;
+
   const checkAndAddRecurring = useCallback((): number => {
     const now = new Date();
     let added = 0;
@@ -1841,6 +1958,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!r.isActive) return;
       const due = new Date(r.nextDueAt);
       if (due > now) return;
+
+      // Check end conditions before firing
+      const newCount = (r.occurrenceCount ?? 0) + 1;
+      if (r.endType === "count" && r.endCount !== undefined && (r.occurrenceCount ?? 0) >= r.endCount) {
+        updatedRecurring = updatedRecurring.map(rec => rec.id === r.id ? { ...rec, isActive: false } : rec);
+        return;
+      }
+      if (r.endType === "date" && r.endDate && due > new Date(r.endDate + "T23:59:59")) {
+        updatedRecurring = updatedRecurring.map(rec => rec.id === r.id ? { ...rec, isActive: false } : rec);
+        return;
+      }
 
       const newExpense: Expense = {
         id: genId(),
@@ -1864,8 +1992,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let nextDue = new Date(r.nextDueAt);
       while (nextDue <= now) nextDue = new Date(nextDue.getTime() + intervalMs);
 
+      // Snap to dayOfWeek if set
+      if (r.dayOfWeek !== undefined && (r.frequency === "weekly" || r.frequency === "biweekly")) {
+        const diff = (r.dayOfWeek - nextDue.getDay() + 7) % 7;
+        if (diff > 0) nextDue = new Date(nextDue.getTime() + diff * 24 * 60 * 60 * 1000);
+      }
+
+      // Apply timeOfDay if set
+      if (r.timeOfDay) {
+        const [h, m] = r.timeOfDay.split(":").map(Number);
+        nextDue.setHours(h, m, 0, 0);
+      }
+
+      // Deactivate if this was the last allowed occurrence
+      const shouldDeactivate =
+        (r.endType === "count" && r.endCount !== undefined && newCount >= r.endCount) ||
+        (r.endType === "date" && r.endDate && nextDue > new Date(r.endDate + "T23:59:59"));
+
       updatedRecurring = updatedRecurring.map(rec =>
-        rec.id === r.id ? { ...rec, nextDueAt: nextDue.toISOString() } : rec
+        rec.id === r.id
+          ? { ...rec, nextDueAt: nextDue.toISOString(), occurrenceCount: newCount, isActive: !shouldDeactivate }
+          : rec
       );
       added++;
     });
@@ -1880,6 +2027,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     return added;
   }, [recurringExpenses, expenses, members, groups, settlements, invitations, saveData, saveRecurring, showToast]);
+
+  const checkAndSendGroupReminders = useCallback(() => {
+    const now = new Date();
+    const newNotifs: AppNotification[] = [];
+    let updatedGroups = [...groups];
+
+    groups.forEach(g => {
+      const campaign = g.nudgeCampaign;
+      if (!campaign?.isActive || !g.endDate) return;
+      if (campaign.nudgesSent >= campaign.maxNudges) return;
+
+      const endDate = new Date(g.endDate + "T23:59:59");
+      const startNudge = new Date(endDate.getTime() + campaign.startDaysAfterEnd * 24 * 60 * 60 * 1000);
+      if (now < startNudge) return;
+
+      const lastNudge = campaign.lastNudgeAt ? new Date(campaign.lastNudgeAt) : null;
+      const nextNudge = lastNudge
+        ? new Date(lastNudge.getTime() + campaign.frequencyDays * 24 * 60 * 60 * 1000)
+        : startNudge;
+      if (now < nextNudge) return;
+
+      const debts = getGroupBalances(g.id);
+      if (debts.length === 0) {
+        // All settled — deactivate campaign
+        updatedGroups = updatedGroups.map(gr =>
+          gr.id === g.id ? { ...gr, nudgeCampaign: { ...campaign, isActive: false } } : gr
+        );
+        return;
+      }
+
+      const nudgeNum = campaign.nudgesSent + 1;
+      const { title, body } = buildNudgeMessage(g.name, debts.length, nudgeNum, campaign.tone);
+      newNotifs.push({
+        id: genId(),
+        type: "settlement_reminder",
+        groupId: g.id,
+        title,
+        body,
+        createdAt: now.toISOString(),
+        read: false,
+        tone: campaign.tone,
+      });
+
+      updatedGroups = updatedGroups.map(gr =>
+        gr.id === g.id
+          ? { ...gr, nudgeCampaign: { ...campaign, nudgesSent: nudgeNum, lastNudgeAt: now.toISOString() } }
+          : gr
+      );
+    });
+
+    if (newNotifs.length > 0) {
+      setNotifications(prev => {
+        const updated = [...newNotifs, ...prev];
+        saveNotifications(updated);
+        return updated;
+      });
+      setGroups(updatedGroups);
+      saveData(members, updatedGroups, expenses, settlements, invitations);
+      showToast(`${newNotifs.length} settlement nudge${newNotifs.length > 1 ? "s" : ""} sent`, "info");
+    }
+  }, [groups, members, expenses, settlements, invitations, getGroupBalances, saveData, saveNotifications, showToast]);
 
   return (
     <AppContext.Provider
@@ -1938,6 +2146,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateRecurringExpense,
         deleteRecurringExpense,
         checkAndAddRecurring,
+        notifications,
+        unreadNotificationCount,
+        markAllNotificationsRead,
+        checkAndSendGroupReminders,
         isLoading,
       }}
     >
