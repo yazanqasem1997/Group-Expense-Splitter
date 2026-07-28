@@ -487,8 +487,16 @@ export default function GroupDetailScreen() {
 
           return (
             <View key={`${debt.fromId}_${debt.toId}`} style={[styles.debtCard, { backgroundColor: colors.surface }]}>
-              <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? "#ccc"} size={40} imageUri={from?.photo} />
-              <View style={styles.debtBody}>
+              <Pressable
+                onPress={() => setProfileMemberId(isMyDebt ? debt.toId : debt.fromId)}
+                style={styles.debtAvatarNamePressable}
+              >
+                <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? "#ccc"} size={40} imageUri={from?.photo} />
+              </Pressable>
+              <Pressable
+                style={styles.debtBody}
+                onPress={() => setProfileMemberId(isMyDebt ? debt.toId : debt.fromId)}
+              >
                 <Text style={[styles.debtText, { color: colors.text }]}>
                   <Text style={{ fontFamily: "Inter_600SemiBold" }}>{isMyDebt ? "You" : from?.name}</Text>
                   {" owes "}
@@ -499,7 +507,7 @@ export default function GroupDetailScreen() {
                   currency={group!.currency}
                   style={[styles.debtAmount, { color: isMyCredit ? colors.positive : isMyDebt ? colors.negative : colors.text }]}
                 />
-              </View>
+              </Pressable>
               <View style={styles.debtActions}>
                 {(isMyDebt || isMyCredit) && (
                   <>
@@ -1278,6 +1286,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 16, marginBottom: 10, gap: 12,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
+  debtAvatarNamePressable: { alignItems: "center", justifyContent: "center" },
   debtBody: { flex: 1 },
   debtText: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
   debtAmount: { fontSize: 16, fontFamily: "Inter_700Bold", marginTop: 2 },
