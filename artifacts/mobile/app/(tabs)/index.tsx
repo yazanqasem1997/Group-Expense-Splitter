@@ -223,7 +223,7 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
           {highlight(group.name)}
           <View style={styles.avatarRow}>
             {otherMembers.map(m =>
-              m ? <Avatar key={m.id} name={m.name} color={m.avatarColor} size={18} style={{ marginRight: -4 }} /> : null
+              m ? <Avatar key={m.id} name={m.name} color={m.avatarColor} size={18} imageUri={m.photo} style={{ marginRight: -4 }} /> : null
             )}
             <Text style={[styles.memberCount, { color: colors.textSecondary }]}>
               {" "}{group.memberIds.length} {group.memberIds.length === 1 ? "person" : "people"}
