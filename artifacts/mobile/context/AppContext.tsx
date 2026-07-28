@@ -287,6 +287,7 @@ interface AppContextType {
   updateNotifPref: (key: keyof NotifPrefs, value: boolean) => void;
   updateCurrentUser: (updates: Partial<Omit<Member, "id" | "isCurrentUser">>) => void;
   updateMember: (id: string, updates: Partial<Omit<Member, "id">>) => void;
+  removeMember: (id: string) => void;
   addMember: (member: Omit<Member, "id">) => Member;
   addGroup: (group: Omit<Group, "id" | "createdAt">) => Group;
   updateGroup: (id: string, updates: Partial<Group>) => void;
@@ -1443,6 +1444,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [currentUser.id, members, groups, expenses, settlements, invitations, saveData]
   );
 
+  const removeMember = useCallback(
+    (id: string) => {
+      const updated = members.filter(m => m.id !== id);
+      setMembers(updated);
+      saveData(updated, groups, expenses, settlements, invitations);
+    },
+    [members, groups, expenses, settlements, invitations, saveData]
+  );
+
   const addMember = useCallback(
     (member: Omit<Member, "id">) => {
       const idx = members.filter(m => !m.isCurrentUser).length;
@@ -2114,6 +2124,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         notifPrefs,
         updateNotifPref,
         addMember,
+        removeMember,
         addGroup,
         updateGroup,
         archiveGroup,
