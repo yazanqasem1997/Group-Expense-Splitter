@@ -1,2 +1,4 @@
 - [React Compiler for-of crash](react-compiler-forof.md) — avoid `for (const [k,v] of Object.entries(...))` inside hooks/components; use `Object.keys().forEach()` instead.
 - [Theme toggle pattern](theme-toggle.md) — useColorScheme() alone can't be overridden in-app; requires ThemeContext with AsyncStorage persistence wrapping the whole tree.
+- [AppAlert layering fix](appalert-modal.md) — AppAlert must use RN Modal (not absolute View) to render above other Modals; zIndex/elevation on Views cannot beat native Modal layer.
+- [Group feed architecture](group-feed.md) — group/[id].tsx uses a FeedItem union type combining Expense + Settlement, sorted by createdAt; audit log (AuditEntry[]) lives on each Expense.

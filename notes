@@ -1,1 +1,9 @@
-I want to make it scroll up when i tap on an icon down
+I want to make it scroll up when i tap on an icon at the bottom
+
+the layer the prompts show at are wron such as when adding expenses, if something is invalid such as adding expense with no info, it still shows the warning under that page, and it is the same across, i need you to audit the app for this error all over
+
+add dates for a group that also gives the use options to send reminders that a trip is going to start in xyz days, and also when it is about to end, after it ends, give the users to modify the group's settings to send notifications for ppl to settle what they owe ever x days.
+
+when someone isnt involved in a transaction, i want it to show from outside where the individual payments show in a group , but detail shows when they open the item
+
+transaction trail should be there, cuz when someone modifies something it must be auditable when an item is pressed on

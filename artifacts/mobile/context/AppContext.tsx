@@ -34,8 +34,10 @@ export interface Member {
   id: string;
   name: string;
   email?: string;
+  phone?: string;
   avatarColor: string;
   photo?: string;
+  joinedAt?: string;
   isCurrentUser?: boolean;
   isPending?: boolean;
 }
@@ -54,6 +56,14 @@ export interface ExpenseComment {
   memberId: string;
   text: string;
   createdAt: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  action: "created" | "updated" | "deleted";
+  changedBy: string;
+  changedAt: string;
+  fieldChanges?: Array<{ field: string; oldValue: string; newValue: string }>;
 }
 
 export interface GroupMessage {
@@ -111,6 +121,7 @@ export interface Expense {
   addedBy?: string;
   comments?: ExpenseComment[];
   reactions?: Record<string, string[]>;
+  auditLog?: AuditEntry[];
 }
 
 export type ExpenseCategory =
@@ -149,6 +160,10 @@ export interface Group {
   isArchived?: boolean;
   archivedAt?: string;
   reminderDays?: number;
+  startDate?: string;
+  endDate?: string;
+  tripStartReminderDays?: number;
+  settleUpReminderDays?: number;
 }
 
 export interface GroupInvitation {
@@ -200,6 +215,7 @@ interface AppContextType {
   notifPrefs: NotifPrefs;
   updateNotifPref: (key: keyof NotifPrefs, value: boolean) => void;
   updateCurrentUser: (updates: Partial<Omit<Member, "id" | "isCurrentUser">>) => void;
+  updateMember: (id: string, updates: Partial<Omit<Member, "id">>) => void;
   addMember: (member: Omit<Member, "id">) => Member;
   addGroup: (group: Omit<Group, "id" | "createdAt">) => Group;
   updateGroup: (id: string, updates: Partial<Group>) => void;
@@ -213,6 +229,7 @@ interface AppContextType {
   toggleReaction: (expenseId: string, emoji: string) => void;
   addSettlement: (settlement: Omit<Settlement, "id" | "createdAt">) => void;
   addSettlements: (settlements: Omit<Settlement, "id" | "createdAt">[]) => void;
+  deleteSettlement: (id: string) => void;
   sendGroupInvite: (groupId: string, email: string, name?: string) => GroupInvitation | null;
   acceptInvitation: (invitationId: string) => void;
   declineInvitation: (invitationId: string) => void;
@@ -1310,6 +1327,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [currentUser, members, groups, expenses, settlements, invitations, saveData]
   );
 
+  const updateMember = useCallback(
+    (id: string, updates: Partial<Omit<Member, "id">>) => {
+      const updated = members.map(m => (m.id === id ? { ...m, ...updates } : m));
+      setMembers(updated);
+      if (id === currentUser.id) setCurrentUser(prev => ({ ...prev, ...updates }));
+      saveData(updated, groups, expenses, settlements, invitations);
+    },
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData]
+  );
+
   const addMember = useCallback(
     (member: Omit<Member, "id">) => {
       const idx = members.filter(m => !m.isCurrentUser).length;
@@ -1317,6 +1344,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...member,
         id: genId(),
         avatarColor: member.avatarColor || DEFAULT_AVATAR_COLORS[idx % DEFAULT_AVATAR_COLORS.length],
+        joinedAt: member.joinedAt ?? new Date().toISOString(),
       };
       const updated = [...members, newMember];
       setMembers(updated);
@@ -1410,11 +1438,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addExpense = useCallback(
     (expense: Omit<Expense, "id" | "createdAt">) => {
+      const now = new Date().toISOString();
+      const creatorId = expense.addedBy ?? currentUser.id;
+      const auditEntry: AuditEntry = {
+        id: genId(),
+        action: "created",
+        changedBy: creatorId,
+        changedAt: now,
+      };
       const newExpense: Expense = {
         ...expense,
         id: genId(),
-        createdAt: new Date().toISOString(),
-        addedBy: expense.addedBy ?? currentUser.id,
+        createdAt: now,
+        addedBy: creatorId,
+        auditLog: [auditEntry],
       };
       const updated = [newExpense, ...expenses];
       setExpenses(updated);
@@ -1429,14 +1466,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateExpense = useCallback(
     (id: string, updates: Partial<Expense>) => {
       const prev = expenses.find(e => e.id === id);
-      const updated = expenses.map(e => (e.id === id ? { ...e, ...updates } : e));
-      setExpenses(updated);
-      saveData(members, groups, updated, settlements, invitations);
-      if (notifPrefs.expenseEdited && prev && !updates.reactions && !updates.comments) {
+      const isRealEdit = !updates.reactions && !updates.comments;
+      let updatedExpenses: Expense[];
+      if (isRealEdit && prev) {
+        const trackedFields: (keyof Expense)[] = ["description", "amount", "paidById", "splitType", "category", "notes"];
+        const fieldChanges: AuditEntry["fieldChanges"] = [];
+        trackedFields.forEach(field => {
+          const oldVal = String(prev[field] ?? "");
+          const newVal = updates[field] !== undefined ? String(updates[field] ?? "") : oldVal;
+          if (updates[field] !== undefined && oldVal !== newVal) {
+            fieldChanges.push({ field, oldValue: oldVal, newValue: newVal });
+          }
+        });
+        const auditEntry: AuditEntry = {
+          id: genId(),
+          action: "updated",
+          changedBy: currentUser.id,
+          changedAt: new Date().toISOString(),
+          ...(fieldChanges.length > 0 ? { fieldChanges } : {}),
+        };
+        updatedExpenses = expenses.map(e =>
+          e.id === id
+            ? { ...e, ...updates, auditLog: [...(e.auditLog ?? []), auditEntry] }
+            : e
+        );
+      } else {
+        updatedExpenses = expenses.map(e => (e.id === id ? { ...e, ...updates } : e));
+      }
+      setExpenses(updatedExpenses);
+      saveData(members, groups, updatedExpenses, settlements, invitations);
+      if (notifPrefs.expenseEdited && prev && isRealEdit) {
         showToast(`"${prev.description}" was updated`, "info");
       }
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id]
   );
 
   const deleteExpense = useCallback(
@@ -1537,6 +1600,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+  );
+
+  const deleteSettlement = useCallback(
+    (id: string) => {
+      const target = settlements.find(s => s.id === id);
+      const updated = settlements.filter(s => s.id !== id);
+      setSettlements(updated);
+      saveData(members, groups, expenses, updated, invitations);
+      if (target) showToast("Settlement removed", "warning");
+    },
+    [members, groups, expenses, settlements, invitations, saveData, showToast]
   );
 
   const sendGroupInvite = useCallback(
@@ -1812,6 +1886,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         convertCurrency,
         convertAmount,
         updateCurrentUser,
+        updateMember,
         currentUser,
         members,
         groups,
@@ -1837,6 +1912,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toggleReaction,
         addSettlement,
         addSettlements,
+        deleteSettlement,
         sendGroupInvite,
         acceptInvitation,
         declineInvitation,

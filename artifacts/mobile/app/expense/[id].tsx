@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
-import { ExpenseComment, useApp } from "@/context/AppContext";
+import { AuditEntry, ExpenseComment, useApp } from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { formatDate, timeAgo } from "@/utils/format";
@@ -58,6 +58,32 @@ export default function ExpenseDetailScreen() {
   const reactions = expense.reactions ?? {};
   const comments = expense.comments ?? [];
   const totalReactions = Object.values(reactions).reduce((s, ids) => s + ids.length, 0);
+
+  // Format a raw audit field value for human-readable display
+  function fmtAuditValue(field: string, raw: string): string {
+    if (field === "amount") {
+      const n = parseFloat(raw);
+      return isNaN(n) ? raw : formatAmount(n, expense.currency);
+    }
+    if (field === "paidById") {
+      const m = getMemberById(raw);
+      return m ? (m.isCurrentUser ? "You" : m.name) : raw;
+    }
+    return raw;
+  }
+
+  // Always have at least a synthetic "created" entry so history is never blank
+  const effectiveAuditLog: AuditEntry[] =
+    expense.auditLog && expense.auditLog.length > 0
+      ? expense.auditLog
+      : [
+          {
+            id: "synthetic_created",
+            action: "created" as const,
+            changedBy: expense.addedBy ?? expense.paidById,
+            changedAt: expense.createdAt,
+          },
+        ];
 
   function handleDelete() {
     showAlert("Delete Expense", "Are you sure you want to delete this expense?", [
@@ -266,6 +292,72 @@ export default function ExpenseDetailScreen() {
             })}
           </View>
 
+          {/* Audit Trail — always shown; older entries get a synthetic "created" entry */}
+          <View style={styles.auditSection}>
+              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Change History</Text>
+              <View style={styles.auditList}>
+                {[...effectiveAuditLog].reverse().map((entry: AuditEntry) => {
+                  const who = getMemberById(entry.changedBy);
+                  const isMe = entry.changedBy === currentUser.id;
+                  const actionColor =
+                    entry.action === "created"
+                      ? colors.success
+                      : entry.action === "deleted"
+                      ? colors.danger
+                      : colors.primary;
+                  const actionBg =
+                    entry.action === "created"
+                      ? colors.successLight
+                      : entry.action === "deleted"
+                      ? colors.dangerLight
+                      : colors.primaryLight;
+
+                  return (
+                    <View key={entry.id} style={[styles.auditCard, { backgroundColor: colors.surface }]}>
+                      <View style={styles.auditLeft}>
+                        <Avatar
+                          name={who?.name ?? "?"}
+                          color={who?.avatarColor ?? "#ccc"}
+                          size={34}
+                        />
+                        <View style={[styles.auditActionBadge, { backgroundColor: actionBg }]}>
+                          <Text style={[styles.auditActionText, { color: actionColor }]}>
+                            {entry.action}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.auditBody}>
+                        <Text style={[styles.auditTitle, { color: colors.text }]}>
+                          <Text style={{ fontFamily: "Inter_600SemiBold" }}>
+                            {isMe ? "You" : who?.name ?? "Unknown"}
+                          </Text>
+                          {entry.action === "created"
+                            ? " created this expense"
+                            : entry.action === "updated"
+                            ? " edited this expense"
+                            : " deleted this expense"}
+                        </Text>
+                        {(entry.fieldChanges ?? []).map((fc, i) => (
+                          <Text key={i} style={[styles.auditChange, { color: colors.textSecondary }]}>
+                            <Text style={{ fontFamily: "Inter_600SemiBold", color: colors.textSecondary }}>
+                              {fc.field}
+                            </Text>
+                            {": "}
+                            <Text style={{ color: colors.negative }}>{fmtAuditValue(fc.field, fc.oldValue)}</Text>
+                            {" → "}
+                            <Text style={{ color: colors.positive }}>{fmtAuditValue(fc.field, fc.newValue)}</Text>
+                          </Text>
+                        ))}
+                        <Text style={[styles.auditTime, { color: colors.textTertiary }]}>
+                          {timeAgo(entry.changedAt)}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
           {/* Comments */}
           <View style={styles.commentsSection}>
             <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
@@ -413,4 +505,17 @@ const styles = StyleSheet.create({
     fontSize: 14, fontFamily: "Inter_400Regular", maxHeight: 80,
   },
   sendBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  auditSection: { gap: 10 },
+  auditList: { gap: 10 },
+  auditCard: {
+    flexDirection: "row", alignItems: "flex-start", padding: 14, borderRadius: 16, gap: 12,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+  },
+  auditLeft: { alignItems: "center", gap: 6 },
+  auditActionBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8 },
+  auditActionText: { fontSize: 10, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.4 },
+  auditBody: { flex: 1, gap: 3 },
+  auditTitle: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  auditChange: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  auditTime: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
 });
