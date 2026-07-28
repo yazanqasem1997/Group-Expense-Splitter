@@ -24,8 +24,10 @@ import {
   RECURRING_FREQUENCY_LABELS,
   RecurringFrequency,
   SplitType,
+  computeNextOccurrences,
   useApp,
 } from "@/context/AppContext";
+import { DatePickerField } from "@/components/DatePickerField";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { parseReceipt, suggestCategory } from "@/services/ai";
@@ -91,10 +93,35 @@ export default function NewExpenseScreen() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>("monthly");
   const [customDays, setCustomDays] = useState("30");
+  const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<number | undefined>(undefined);
+  const [recurringTimeOfDay, setRecurringTimeOfDay] = useState("09:00");
+  const [endType, setEndType] = useState<"never" | "count" | "date">("never");
+  const [endCount, setEndCount] = useState("10");
+  const [endDateStr, setEndDateStr] = useState("");
   const [newCatName, setNewCatName] = useState("");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const amount = parseFloat(amountStr) || 0;
+
+  const nextOccurrences = useMemo(() => {
+    if (!isRecurring) return [];
+    return computeNextOccurrences({
+      frequency: recurringFrequency,
+      customDays: recurringFrequency === "custom" ? (parseInt(customDays) || 30) : undefined,
+      dayOfWeek: recurringDayOfWeek,
+      endType,
+      endCount: endType === "count" ? (parseInt(endCount) || 10) : undefined,
+      endDate: endType === "date" ? (endDateStr || undefined) : undefined,
+      occurrenceCount: 0,
+      nextDueAt: (() => {
+        const d = new Date();
+        const days = recurringFrequency === "custom"
+          ? (parseInt(customDays) || 30)
+          : RECURRING_FREQUENCY_DAYS[recurringFrequency];
+        return new Date(d.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+      })(),
+    }, 6);
+  }, [isRecurring, recurringFrequency, customDays, recurringDayOfWeek, endType, endCount, endDateStr]);
   const currencySymbol = group ? (CURRENCY_SYMBOLS[group.currency] ?? group.currency + " ") : "$";
 
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -289,7 +316,9 @@ export default function NewExpenseScreen() {
         const days = recurringFrequency === "custom"
           ? Math.max(1, parseInt(customDays) || 30)
           : RECURRING_FREQUENCY_DAYS[recurringFrequency];
-        const nextDueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+        const firstDue = nextOccurrences.length > 0
+          ? nextOccurrences[0].toISOString()
+          : new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
         addRecurringExpense({
           groupId: group.id,
           description: description.trim(),
@@ -301,7 +330,13 @@ export default function NewExpenseScreen() {
           category,
           frequency: recurringFrequency,
           ...(recurringFrequency === "custom" ? { customDays: days } : {}),
-          nextDueAt,
+          ...(recurringDayOfWeek !== undefined ? { dayOfWeek: recurringDayOfWeek } : {}),
+          timeOfDay: recurringTimeOfDay,
+          endType,
+          ...(endType === "count" ? { endCount: parseInt(endCount) || 10 } : {}),
+          ...(endType === "date" && endDateStr ? { endDate: endDateStr } : {}),
+          occurrenceCount: 0,
+          nextDueAt: firstDue,
           isActive: true,
         });
       }
@@ -463,12 +498,161 @@ export default function NewExpenseScreen() {
                 <Text style={[styles.customDaysLabel, { color: colors.text }]}>days</Text>
               </View>
             )}
+            {/* Day-of-week picker (weekly / biweekly only) */}
+            {isRecurring && (recurringFrequency === "weekly" || recurringFrequency === "biweekly") && (
+              <View style={styles.recurringSubSection}>
+                <Text style={[styles.recurringSubLabel, { color: colors.textSecondary }]}>Which day?</Text>
+                <View style={styles.dayPickerRow}>
+                  {["S","M","T","W","T","F","S"].map((d, idx) => (
+                    <Pressable
+                      key={idx}
+                      style={[
+                        styles.dayChip,
+                        {
+                          backgroundColor: recurringDayOfWeek === idx ? colors.primary : colors.surface,
+                          borderColor: recurringDayOfWeek === idx ? colors.primary : colors.border,
+                        },
+                      ]}
+                      onPress={() => {
+                        setRecurringDayOfWeek(recurringDayOfWeek === idx ? undefined : idx);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={[styles.dayChipText, { color: recurringDayOfWeek === idx ? "#fff" : colors.textSecondary }]}>
+                        {d}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Time of day picker */}
+            {isRecurring && (
+              <View style={styles.recurringSubSection}>
+                <Text style={[styles.recurringSubLabel, { color: colors.textSecondary }]}>Time of day</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  {[
+                    { label: "Morning", sub: "9:00 am",  value: "09:00", icon: "☀️" },
+                    { label: "Noon",    sub: "12:00 pm", value: "12:00", icon: "🌤️" },
+                    { label: "Afternoon",sub: "3:00 pm", value: "15:00", icon: "⛅️" },
+                    { label: "Evening", sub: "6:00 pm",  value: "18:00", icon: "🌇" },
+                    { label: "Night",   sub: "10:00 pm", value: "22:00", icon: "🌙" },
+                  ].map(t => {
+                    const active = recurringTimeOfDay === t.value;
+                    return (
+                      <Pressable
+                        key={t.value}
+                        style={[
+                          styles.timeChip,
+                          {
+                            backgroundColor: active ? colors.primary : colors.surface,
+                            borderColor: active ? colors.primary : colors.border,
+                          },
+                        ]}
+                        onPress={() => { setRecurringTimeOfDay(t.value); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                      >
+                        <Text style={styles.timeChipEmoji}>{t.icon}</Text>
+                        <Text style={[styles.timeChipLabel, { color: active ? "#fff" : colors.text }]}>{t.label}</Text>
+                        <Text style={[styles.timeChipSub, { color: active ? "rgba(255,255,255,0.75)" : colors.textTertiary }]}>{t.sub}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* End condition */}
+            {isRecurring && (
+              <View style={styles.recurringSubSection}>
+                <Text style={[styles.recurringSubLabel, { color: colors.textSecondary }]}>Ends</Text>
+                <View style={styles.endTypeRow}>
+                  {(["never", "count", "date"] as const).map(et => (
+                    <Pressable
+                      key={et}
+                      style={[
+                        styles.endTypeBtn,
+                        {
+                          backgroundColor: endType === et ? colors.primary : colors.surface,
+                          borderColor: endType === et ? colors.primary : colors.border,
+                        },
+                      ]}
+                      onPress={() => { setEndType(et); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    >
+                      <Text style={[styles.endTypeBtnText, { color: endType === et ? "#fff" : colors.textSecondary }]}>
+                        {et === "never" ? "Forever" : et === "count" ? "After N times" : "Until date"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {endType === "count" && (
+                  <View style={[styles.customDaysRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.customDaysLabel, { color: colors.text }]}>After</Text>
+                    <TextInput
+                      style={[styles.customDaysInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                      value={endCount}
+                      onChangeText={t => setEndCount(t.replace(/[^0-9]/g, ""))}
+                      keyboardType="number-pad"
+                      maxLength={3}
+                      selectTextOnFocus
+                    />
+                    <Text style={[styles.customDaysLabel, { color: colors.text }]}>occurrences</Text>
+                  </View>
+                )}
+                {endType === "date" && (
+                  <DatePickerField
+                    label="End date"
+                    value={endDateStr}
+                    onChange={setEndDateStr}
+                    colors={colors}
+                  />
+                )}
+              </View>
+            )}
+
+            {/* Upcoming payments preview strip */}
+            {isRecurring && nextOccurrences.length > 0 && (
+              <View style={styles.recurringSubSection}>
+                <Text style={[styles.recurringSubLabel, { color: colors.textSecondary }]}>
+                  Upcoming payments ({nextOccurrences.length}{endType === "never" ? "+" : ""})
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  {nextOccurrences.map((d, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.previewCard,
+                        {
+                          backgroundColor: i === 0 ? colors.primary : colors.surface,
+                          borderColor: i === 0 ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.previewCardMonth, { color: i === 0 ? "rgba(255,255,255,0.75)" : colors.textTertiary }]}>
+                        {d.toLocaleDateString("en", { month: "short" }).toUpperCase()}
+                      </Text>
+                      <Text style={[styles.previewCardDay, { color: i === 0 ? "#fff" : colors.text }]}>
+                        {d.getDate()}
+                      </Text>
+                      <Text style={[styles.previewCardWeekday, { color: i === 0 ? "rgba(255,255,255,0.75)" : colors.textTertiary }]}>
+                        {d.toLocaleDateString("en", { weekday: "short" })}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             {isRecurring && (
               <Text style={[styles.recurringNote, { color: colors.textTertiary }]}>
-                This expense will be added once now, then again automatically
+                Added once now, then automatically
                 {recurringFrequency === "custom"
-                  ? ` every ${parseInt(customDays) || 30} day${(parseInt(customDays) || 30) === 1 ? "" : "s"}.`
-                  : ` ${RECURRING_FREQUENCY_LABELS[recurringFrequency].toLowerCase()}.`}
+                  ? ` every ${parseInt(customDays) || 30} day${(parseInt(customDays) || 30) === 1 ? "" : "s"}`
+                  : ` ${RECURRING_FREQUENCY_LABELS[recurringFrequency].toLowerCase()}`}
+                {recurringDayOfWeek !== undefined && (recurringFrequency === "weekly" || recurringFrequency === "biweekly")
+                  ? ` on ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][recurringDayOfWeek]}s`
+                  : ""}
+                {endType === "count" ? `, ${endCount} times total` : endType === "date" && endDateStr ? `, until ${endDateStr.split("-").reverse().join("-")}` : ""}.
               </Text>
             )}
           </View>
@@ -883,4 +1067,20 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
   },
   recurringNote: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  recurringSubSection: { gap: 8, marginTop: 4 },
+  recurringSubLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6 },
+  dayPickerRow: { flexDirection: "row", gap: 6 },
+  dayChip: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  dayChipText: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  timeChip: { alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, gap: 2, minWidth: 72 },
+  timeChipEmoji: { fontSize: 18 },
+  timeChipLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  timeChipSub: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  endTypeRow: { flexDirection: "row", gap: 6 },
+  endTypeBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
+  endTypeBtnText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  previewCard: { alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1, gap: 2, minWidth: 60 },
+  previewCardMonth: { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5 },
+  previewCardDay: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  previewCardWeekday: { fontSize: 10, fontFamily: "Inter_400Regular" },
 });

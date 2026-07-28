@@ -7,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { useApp } from "@/context/AppContext";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
 
 const AnyTrigger = NativeTabs.Trigger as any;
@@ -40,6 +41,7 @@ function NativeTabLayout() {
 
 function ClassicTabLayout() {
   const { colors, isDark } = useTheme();
+  const { unreadNotificationCount } = useApp();
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
 
@@ -80,6 +82,8 @@ function ClassicTabLayout() {
         name="activity"
         options={{
           title: "Activity",
+          tabBarBadge: unreadNotificationCount > 0 ? unreadNotificationCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: colors.primary, fontSize: 10 },
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="list.bullet" tintColor={color} size={24} />
