@@ -604,9 +604,16 @@ export default function GroupDetailScreen() {
       </View>
 
       <View style={[styles.statsBar, { backgroundColor: colors.surface }]}>
-        <View style={styles.statItem}>
+        <View style={[styles.statItem, styles.statItemTotal]}>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total</Text>
-          <Text style={[styles.statValue, { color: colors.text }]}>{formatAmount(totalExpenses, group.currency)}</Text>
+          <Text
+            style={[styles.statValue, styles.statValueTotal, { color: colors.text }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+          >
+            {formatAmount(totalExpenses, group.currency)}
+          </Text>
         </View>
         <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
         <View style={styles.statItem}>
@@ -1083,8 +1090,10 @@ const styles = StyleSheet.create({
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
   statItem: { flex: 1, alignItems: "center", paddingVertical: 12 },
+  statItemTotal: { flex: 2 },
   statLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 2 },
   statValue: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  statValueTotal: { fontSize: 17, width: "100%", textAlign: "center" },
   statDivider: { width: 1, marginVertical: 8 },
   members: {
     marginHorizontal: 16, marginTop: 10, borderRadius: 14,

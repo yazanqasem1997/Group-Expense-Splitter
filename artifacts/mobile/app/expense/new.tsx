@@ -5,11 +5,11 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -18,7 +18,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { BUILTIN_CATEGORY_CONFIG } from "@/components/CategoryIcon";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { CURRENCY_SYMBOLS, SplitType, useApp } from "@/context/AppContext";
+import {
+  CURRENCY_SYMBOLS,
+  RECURRING_FREQUENCY_DAYS,
+  RECURRING_FREQUENCY_LABELS,
+  RecurringFrequency,
+  SplitType,
+  useApp,
+} from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { parseReceipt, suggestCategory } from "@/services/ai";
@@ -50,6 +57,7 @@ export default function NewExpenseScreen() {
     currentUser,
     addExpense,
     updateExpense,
+    addRecurringExpense,
     expenses,
     customCategories,
     addCustomCategory,
@@ -78,6 +86,11 @@ export default function NewExpenseScreen() {
   );
   const [scanLoading, setScanLoading] = useState(false);
   const [showAddCat, setShowAddCat] = useState(false);
+  const [descError, setDescError] = useState(false);
+  const [amountError, setAmountError] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>("monthly");
+  const [customDays, setCustomDays] = useState("30");
   const [newCatName, setNewCatName] = useState("");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -238,14 +251,10 @@ export default function NewExpenseScreen() {
   }
 
   function handleSave() {
-    if (!description.trim()) {
-      showAlert("Description required", "Please enter a description");
-      return;
-    }
-    if (amount <= 0) {
-      showAlert("Amount required", "Please enter a valid amount");
-      return;
-    }
+    let hasError = false;
+    if (!description.trim()) { setDescError(true); hasError = true; }
+    if (amount <= 0) { setAmountError(true); hasError = true; }
+    if (hasError) return;
     if (!group) return;
     if (splitValid === false) {
       const msg =
@@ -276,6 +285,26 @@ export default function NewExpenseScreen() {
         splits,
         category,
       });
+      if (isRecurring) {
+        const days = recurringFrequency === "custom"
+          ? Math.max(1, parseInt(customDays) || 30)
+          : RECURRING_FREQUENCY_DAYS[recurringFrequency];
+        const nextDueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+        addRecurringExpense({
+          groupId: group.id,
+          description: description.trim(),
+          amount,
+          currency: group.currency,
+          paidById,
+          splitType,
+          splits,
+          category,
+          frequency: recurringFrequency,
+          ...(recurringFrequency === "custom" ? { customDays: days } : {}),
+          nextDueAt,
+          isActive: true,
+        });
+      }
     }
     router.back();
   }
@@ -325,31 +354,125 @@ export default function NewExpenseScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 40 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
-        <View style={[styles.amountCard, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.currencySymbol, { color: colors.primary }]}>
-            {currencySymbol}
-          </Text>
-          <TextInput
-            style={[styles.amountInput, { color: colors.text }]}
-            placeholder="0.00"
-            placeholderTextColor={colors.textTertiary}
-            value={amountStr}
-            onChangeText={setAmountStr}
-            keyboardType="decimal-pad"
-            autoFocus
-          />
+        <View>
+          <View style={[
+            styles.amountCard,
+            { backgroundColor: colors.surface },
+            amountError && { borderWidth: 2, borderColor: colors.danger },
+          ]}>
+            <Text style={[styles.currencySymbol, { color: amountError ? colors.danger : colors.primary }]}>
+              {currencySymbol}
+            </Text>
+            <TextInput
+              style={[styles.amountInput, { color: colors.text }]}
+              placeholder="0.00"
+              placeholderTextColor={colors.textTertiary}
+              value={amountStr}
+              onChangeText={t => { setAmountStr(t); if (parseFloat(t) > 0) setAmountError(false); }}
+              keyboardType="decimal-pad"
+              autoFocus
+            />
+          </View>
+          {amountError && (
+            <Text style={[styles.fieldErrorHint, { color: colors.danger }]}>
+              Please enter a cost amount
+            </Text>
+          )}
         </View>
 
         <View style={styles.descRow}>
-          <TextInput
-            style={[styles.descriptionInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, flex: 1 }]}
-            placeholder="What's this for?"
-            placeholderTextColor={colors.textTertiary}
-            value={description}
-            onChangeText={setDescription}
-          />
+          <View style={{ flex: 1 }}>
+            <TextInput
+              style={[
+                styles.descriptionInput,
+                { color: colors.text, backgroundColor: colors.surface, flex: 1 },
+                descError
+                  ? { borderColor: colors.danger, borderWidth: 2 }
+                  : { borderColor: colors.border, borderWidth: 1 },
+              ]}
+              placeholder="What's this for? *"
+              placeholderTextColor={descError ? colors.danger : colors.textTertiary}
+              value={description}
+              onChangeText={t => { setDescription(t); if (t.trim()) setDescError(false); }}
+            />
+            {descError && (
+              <Text style={[styles.fieldErrorHint, { color: colors.danger }]}>
+                Please add a description
+              </Text>
+            )}
+          </View>
         </View>
+
+        {/* Recurring toggle — only when creating, not editing */}
+        {!isEditing && (
+          <View style={styles.recurringSection}>
+            <View style={[styles.recurringRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Feather name="repeat" size={16} color={isRecurring ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.recurringLabel, { color: colors.text }]}>Repeat this expense</Text>
+              <Switch
+                value={isRecurring}
+                onValueChange={v => {
+                  setIsRecurring(v);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#fff"
+                style={{ marginLeft: "auto" }}
+              />
+            </View>
+            {isRecurring && (
+              <View style={styles.freqRow}>
+                {(Object.entries(RECURRING_FREQUENCY_LABELS) as [RecurringFrequency, string][]).map(([val, label]) => (
+                  <Pressable
+                    key={val}
+                    style={[
+                      styles.freqChip,
+                      {
+                        backgroundColor: recurringFrequency === val ? colors.primary : colors.surface,
+                        borderColor: recurringFrequency === val ? colors.primary : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      setRecurringFrequency(val);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <Text style={[
+                      styles.freqChipText,
+                      { color: recurringFrequency === val ? "#fff" : colors.textSecondary },
+                    ]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            {isRecurring && recurringFrequency === "custom" && (
+              <View style={[styles.customDaysRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.customDaysLabel, { color: colors.text }]}>Every</Text>
+                <TextInput
+                  style={[styles.customDaysInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                  value={customDays}
+                  onChangeText={t => setCustomDays(t.replace(/[^0-9]/g, ""))}
+                  keyboardType="number-pad"
+                  maxLength={3}
+                  selectTextOnFocus
+                />
+                <Text style={[styles.customDaysLabel, { color: colors.text }]}>days</Text>
+              </View>
+            )}
+            {isRecurring && (
+              <Text style={[styles.recurringNote, { color: colors.textTertiary }]}>
+                This expense will be added once now, then again automatically
+                {recurringFrequency === "custom"
+                  ? ` every ${parseInt(customDays) || 30} day${(parseInt(customDays) || 30) === 1 ? "" : "s"}.`
+                  : ` ${RECURRING_FREQUENCY_LABELS[recurringFrequency].toLowerCase()}.`}
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.sectionLabelRow}>
           <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
@@ -561,6 +684,7 @@ export default function NewExpenseScreen() {
             </Text>
           </View>
         )}
+
       </KeyboardAwareScrollViewCompat>
     </View>
   );
@@ -713,4 +837,50 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   validationText: { fontSize: 13, fontFamily: "Inter_500Medium", flex: 1 },
+  fieldErrorHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 5,
+    marginLeft: 4,
+  },
+  recurringSection: { gap: 10 },
+  recurringRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  recurringLabel: { fontSize: 15, fontFamily: "Inter_500Medium" },
+  freqRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  freqChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  freqChipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  customDaysRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  customDaysLabel: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  customDaysInput: {
+    width: 60,
+    height: 38,
+    borderRadius: 8,
+    borderWidth: 1,
+    textAlign: "center",
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+  },
+  recurringNote: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
 });

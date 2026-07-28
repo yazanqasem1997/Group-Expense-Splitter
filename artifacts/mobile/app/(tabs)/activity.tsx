@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
+import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -58,6 +59,7 @@ export default function ActivityScreen() {
     }
   }, [filter]);
   const listRef = useRef<FlatList>(null);
+  useScrollToTop(listRef);
   useEffect(() => {
     scrollRegistry.register("activity", () => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
