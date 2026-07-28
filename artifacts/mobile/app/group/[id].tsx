@@ -347,6 +347,9 @@ export default function GroupDetailScreen() {
             {expense.description}
           </Text>
           <View style={styles.expenseMetaRow}>
+            {!youPaid && payer && (
+              <Avatar name={payer.name} color={payer.avatarColor} size={14} imageUri={payer.photo} style={{ marginRight: 4 }} />
+            )}
             <Text style={[styles.expenseMeta, { color: colors.textSecondary }]}>
               {youPaid ? "You" : payer?.name ?? "Someone"} paid · {timeAgo(expense.createdAt)}
             </Text>
@@ -461,7 +464,7 @@ export default function GroupDetailScreen() {
 
           return (
             <View key={`${debt.fromId}_${debt.toId}`} style={[styles.debtCard, { backgroundColor: colors.surface }]}>
-              <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? "#ccc"} size={40} />
+              <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? "#ccc"} size={40} imageUri={from?.photo} />
               <View style={styles.debtBody}>
                 <Text style={[styles.debtText, { color: colors.text }]}>
                   <Text style={{ fontFamily: "Inter_600SemiBold" }}>{isMyDebt ? "You" : from?.name}</Text>
@@ -524,7 +527,7 @@ export default function GroupDetailScreen() {
             return (
               <View style={[styles.chatRow, isMe && styles.chatRowMe]}>
                 {!isMe && (
-                  <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={28} />
+                  <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={28} imageUri={author?.photo} />
                 )}
                 <View style={styles.chatBubbleWrap}>
                   {!isMe && (

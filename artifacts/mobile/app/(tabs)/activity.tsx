@@ -152,7 +152,7 @@ export default function ActivityScreen() {
           {highlightText(expense.description, [styles.cardTitle, { color: colors.text }])}
           <View style={styles.cardMetaRow}>
             {payer && (
-              <Avatar name={payer.name} color={payer.avatarColor} size={14} style={{ marginRight: 4 }} />
+              <Avatar name={payer.name} color={payer.avatarColor} size={14} style={{ marginRight: 4 }} imageUri={payer.photo} />
             )}
             <Text style={[styles.cardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
               {youPaid ? "You" : payer?.name ?? "Someone"} · {highlightText(group?.name ?? "", [styles.cardMeta, { color: colors.textSecondary }])}
