@@ -63,7 +63,7 @@ export default function ExpenseDetailScreen() {
   function fmtAuditValue(field: string, raw: string): string {
     if (field === "amount") {
       const n = parseFloat(raw);
-      return isNaN(n) ? raw : formatAmount(n, expense.currency);
+      return isNaN(n) ? raw : formatAmount(n, expense?.currency);
     }
     if (field === "paidById") {
       const m = getMemberById(raw);

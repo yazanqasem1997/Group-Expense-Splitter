@@ -74,13 +74,14 @@ export interface GroupMessage {
   createdAt: string;
 }
 
-export type RecurringFrequency = "weekly" | "biweekly" | "monthly" | "quarterly";
+export type RecurringFrequency = "weekly" | "biweekly" | "monthly" | "quarterly" | "custom";
 
 export const RECURRING_FREQUENCY_DAYS: Record<RecurringFrequency, number> = {
   weekly: 7,
   biweekly: 14,
   monthly: 30,
   quarterly: 90,
+  custom: 30,
 };
 
 export const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
@@ -88,6 +89,7 @@ export const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   biweekly: "Every 2 weeks",
   monthly: "Every month",
   quarterly: "Every 3 months",
+  custom: "Custom",
 };
 
 export interface RecurringExpense {
@@ -101,6 +103,7 @@ export interface RecurringExpense {
   splits: SplitDetail[];
   category: string;
   frequency: RecurringFrequency;
+  customDays?: number;
   nextDueAt: string;
   isActive: boolean;
   createdAt: string;
@@ -1854,7 +1857,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       updatedExpenses = [newExpense, ...updatedExpenses];
 
-      const intervalMs = RECURRING_FREQUENCY_DAYS[r.frequency] * 24 * 60 * 60 * 1000;
+      const intervalDays = r.frequency === "custom" && r.customDays
+        ? r.customDays
+        : RECURRING_FREQUENCY_DAYS[r.frequency];
+      const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
       let nextDue = new Date(r.nextDueAt);
       while (nextDue <= now) nextDue = new Date(nextDue.getTime() + intervalMs);
 

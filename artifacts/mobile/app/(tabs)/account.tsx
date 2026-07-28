@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { showAlert } from "@/hooks/alertStore";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
+import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
@@ -181,6 +182,7 @@ export default function AccountScreen() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
   const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
   useEffect(() => {
     scrollRegistry.register("account", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });

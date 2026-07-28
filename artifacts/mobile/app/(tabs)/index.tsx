@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
+import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -272,6 +273,7 @@ export default function GroupsScreen() {
   const [showSort, setShowSort] = useState(false);
   const [sortBy, setSortBy] = useState<"balance" | "name" | "recent" | "activity">("balance");
   const listRef = useRef<FlatList>(null);
+  useScrollToTop(listRef);
   useEffect(() => {
     scrollRegistry.register("index", () => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
