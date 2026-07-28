@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState, AppStateStatus } from "react-native";
 import { useToast } from "@/context/ToastContext";
+import { processOverdueRecurring } from "@/services/backgroundRecurring";
 
 export type Currency =
   | "USD" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR" | "AED"
@@ -1281,12 +1283,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(DEFAULT_NOTIF_PREFS);
 
+  // Lock: prevents background task and foreground check from running concurrently.
+  const recurringLockRef = useRef(false);
+
   useEffect(() => {
     loadData();
   }, []);
 
   const genId = () =>
     Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+
+  /**
+   * Reload only the recurring-related storage slices (expenses, recurring
+   * schedule, notifications) into React state. Called after
+   * processOverdueRecurring() writes its results to AsyncStorage so that
+   * the in-memory state never diverges from the canonical storage copy.
+   */
+  const reloadRecurringSlices = async () => {
+    try {
+      const [mainRaw, recurringRaw, notifsRaw] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEY),
+        AsyncStorage.getItem(RECURRING_KEY),
+        AsyncStorage.getItem(NOTIFICATIONS_KEY),
+      ]);
+      if (mainRaw) {
+        const data = JSON.parse(mainRaw);
+        if (data.expenses) setExpenses(data.expenses);
+      }
+      if (recurringRaw) setRecurringExpenses(JSON.parse(recurringRaw));
+      if (notifsRaw) setNotifications(JSON.parse(notifsRaw));
+    } catch {}
+  };
 
   const loadData = async () => {
     try {
@@ -1340,6 +1367,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const appNotifsStored = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
       if (appNotifsStored) setNotifications(JSON.parse(appNotifsStored));
+
+      // Cold-launch check: process any recurrences that fired while the app
+      // was closed and background fetch was unavailable or not yet scheduled.
+      // We run this after the initial state load so storage is fresh.
+      if (!recurringLockRef.current) {
+        recurringLockRef.current = true;
+        try {
+          const added = await processOverdueRecurring();
+          if (added > 0) await reloadRecurringSlices();
+        } finally {
+          recurringLockRef.current = false;
+        }
+      }
 
     } catch (e) {
     } finally {
@@ -2107,6 +2147,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showToast(`${newNotifs.length} settlement nudge${newNotifs.length > 1 ? "s" : ""} sent`, "info");
     }
   }, [groups, members, expenses, settlements, invitations, getGroupBalances, saveData, saveNotifications, showToast]);
+
+  // ── Foreground-resume: storage-based recurring check ───────────────────
+  // Runs processOverdueRecurring() (AsyncStorage, no React state) so that
+  // results from a prior background-task write are never re-processed by the
+  // stale in-memory checkAndAddRecurring(). A lock prevents concurrent runs
+  // between background task and foreground resume.
+  const showToastRef = useRef(showToast);
+  useEffect(() => { showToastRef.current = showToast; }, [showToast]);
+
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", async (nextState: AppStateStatus) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+      if (prev.match(/inactive|background/) && nextState === "active") {
+        if (recurringLockRef.current) return;
+        recurringLockRef.current = true;
+        try {
+          const added = await processOverdueRecurring();
+          if (added > 0) {
+            await reloadRecurringSlices();
+            showToastRef.current(
+              `${added} recurring expense${added > 1 ? "s" : ""} added`,
+              "success"
+            );
+          }
+        } finally {
+          recurringLockRef.current = false;
+        }
+      }
+    });
+    return () => sub.remove();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <AppContext.Provider

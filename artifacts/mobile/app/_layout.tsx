@@ -20,6 +20,14 @@ import { AppProvider } from "@/context/AppContext";
 import { BiometricProvider, useBiometric } from "@/context/BiometricContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { ToastProvider } from "@/context/ToastContext";
+import {
+  defineBackgroundRecurringTask,
+  registerBackgroundRecurring,
+} from "@/services/backgroundRecurring";
+
+// Must be called at module level so TaskManager can find the task definition
+// before the React tree mounts (Expo requirement).
+defineBackgroundRecurringTask();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -82,6 +90,12 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    // Register background fetch after fonts settle so the app is fully booted.
+    // Gracefully no-ops when background fetch is unavailable (simulator, restricted).
+    registerBackgroundRecurring();
+  }, []);
 
   if (!fontsLoaded && !fontError) return null;
 
