@@ -1301,7 +1301,7 @@ export default function GroupDetailScreen() {
         onRequestClose={() => setShowTripDatesModal(false)}
       >
         <Pressable style={styles.settleOverlay} onPress={() => setShowTripDatesModal(false)}>
-          <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0 }]} onPress={e => e.stopPropagation()}>
+          <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0, height: "85%" }]} onPress={e => e.stopPropagation()}>
             <View style={[styles.tripModalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Dates & Reminders</Text>
               <Pressable onPress={() => setShowTripDatesModal(false)}>
@@ -1576,7 +1576,7 @@ export default function GroupDetailScreen() {
         onRequestClose={() => setEditingRecurring(null)}
       >
         <Pressable style={styles.settleOverlay} onPress={() => setEditingRecurring(null)}>
-          <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0 }]} onPress={e => e.stopPropagation()}>
+          <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0, height: "85%" }]} onPress={e => e.stopPropagation()}>
             <View style={[styles.tripModalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Edit Recurring</Text>
               <Pressable onPress={() => setEditingRecurring(null)}>
