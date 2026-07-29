@@ -51,8 +51,17 @@ interface RecurringExpense {
 
 interface AppNotification {
   id: string;
-  type: "settlement_reminder" | "recurring_fired";
+  type:
+    | "settlement_reminder"
+    | "recurring_fired"
+    | "expense_added" | "expense_edited" | "expense_deleted"
+    | "settlement_recorded" | "settlement_deleted"
+    | "member_added" | "member_removed"
+    | "group_updated" | "group_archived" | "group_ended"
+    | "comment_added"
+    | "recurring_added" | "recurring_updated" | "recurring_deleted";
   groupId?: string;
+  expenseId?: string;
   title: string;
   body: string;
   createdAt: string;

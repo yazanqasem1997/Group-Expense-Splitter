@@ -39,7 +39,11 @@ import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
-type Tab = "expenses" | "balances" | "chat" | "charts";
+type Tab = "expenses" | "balances" | "charts" | "chat";
+
+// Module-level cache: survives any remount caused by context state cascades
+// (e.g. exchange-rate fetch completing and updating AppContext rapidly).
+const _tabCache = new Map<string, Tab>();
 
 type FeedItem =
   | { type: "expense"; id: string; createdAt: string; data: Expense }
@@ -58,9 +62,11 @@ export default function GroupDetailScreen() {
     addGroupMessage, getGroupMessages, updateGroup,
     checkAndAddRecurring, fetchExchangeRates, checkAndSendGroupReminders,
     recurringExpenses, updateRecurringExpense, deleteRecurringExpense,
+    convertAmount,
   } = useApp();
 
-  const [tab, setTab] = useState<Tab>("expenses");
+  const [tab, setTab] = useState<Tab>(() => _tabCache.get(id) ?? "expenses");
+  const handleSetTab = (t: Tab) => { _tabCache.set(id, t); setTab(t); };
   const [recurringCollapsed, setRecurringCollapsed] = useState(false);
   const [expensesCollapsed, setExpensesCollapsed] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
@@ -191,7 +197,7 @@ export default function GroupDetailScreen() {
     );
   }
 
-  const totalExpenses = groupExpenses.reduce((s, e) => s + e.amount, 0);
+  const totalExpenses = groupExpenses.reduce((s, e) => s + convertAmount(e.amount, e.currency, group.currency), 0);
   const myDebts = debts.filter(d => d.fromId === currentUser.id);
   const myCredits = debts.filter(d => d.toId === currentUser.id);
 
@@ -205,9 +211,7 @@ export default function GroupDetailScreen() {
   function handleGroupOptions() {
     if (!group) return;
     const archiveLabel = group.isArchived ? "Unarchive Group" : "Archive Group";
-    const tripDatesBtn = group.type === "trip"
-      ? [{ text: "Trip Dates & Reminders", onPress: openTripDatesModal }]
-      : [];
+    const tripDatesBtn = [{ text: "Dates & Reminders", onPress: openTripDatesModal }];
     const isAdmin = (group.adminIds ?? []).includes(currentUser.id);
     const endBtn = !group.isEnded && isAdmin
       ? [{
@@ -673,10 +677,26 @@ export default function GroupDetailScreen() {
           )}
         </View>
         <View style={styles.expenseRight}>
-          <AmountText amount={expense.amount} currency={group!.currency} style={[styles.expenseTotal, { color: colors.text }]} />
+          {expense.currency !== group!.currency && (
+            <Text style={[styles.expenseForeignOrig, { color: colors.textTertiary }]}>
+              {CURRENCY_SYMBOLS[expense.currency] ?? expense.currency}{expense.amount.toFixed(2)} →
+            </Text>
+          )}
+          <AmountText
+            amount={expense.currency !== group!.currency
+              ? convertAmount(expense.amount, expense.currency, group!.currency)
+              : expense.amount}
+            currency={group!.currency}
+            style={[styles.expenseTotal, { color: colors.text }]}
+          />
           {isInvolved && netForMe !== null && (
             <Text style={[styles.expenseNet, { color: netForMe >= 0 ? colors.positive : colors.negative }]}>
-              {netForMe >= 0 ? "+" : "-"}{formatAmount(Math.abs(netForMe), group!.currency)}
+              {netForMe >= 0 ? "+" : "-"}{formatAmount(
+                Math.abs(expense.currency !== group!.currency
+                  ? convertAmount(netForMe, expense.currency, group!.currency)
+                  : netForMe),
+                group!.currency
+              )}
             </Text>
           )}
         </View>
@@ -958,26 +978,24 @@ export default function GroupDetailScreen() {
         </View>
       </View>
 
-      {group.type === "trip" && (
-        <Pressable
-          style={[styles.tripDatesBar, { backgroundColor: colors.primaryLight }]}
-          onPress={openTripDatesModal}
-        >
-          <Feather name="calendar" size={15} color={colors.primary} />
-          {group.startDate || group.endDate ? (
-            <Text style={[styles.tripDatesText, { color: colors.primary }]}>
-              {group.startDate
-                ? group.startDate.split("-").reverse().join("-")
-                : "?"}{" → "}{group.endDate
-                ? group.endDate.split("-").reverse().join("-")
-                : "?"}
-            </Text>
-          ) : (
-            <Text style={[styles.tripDatesText, { color: colors.primary }]}>Set trip dates & reminders</Text>
-          )}
-          <Feather name="chevron-right" size={13} color={colors.primary} style={{ marginLeft: "auto" }} />
-        </Pressable>
-      )}
+      <Pressable
+        style={[styles.tripDatesBar, { backgroundColor: colors.primaryLight }]}
+        onPress={openTripDatesModal}
+      >
+        <Feather name="calendar" size={15} color={colors.primary} />
+        {group.startDate || group.endDate ? (
+          <Text style={[styles.tripDatesText, { color: colors.primary }]}>
+            {group.startDate
+              ? group.startDate.split("-").reverse().join("-")
+              : "?"}{" → "}{group.endDate
+              ? group.endDate.split("-").reverse().join("-")
+              : "?"}
+          </Text>
+        ) : (
+          <Text style={[styles.tripDatesText, { color: colors.primary }]}>Set dates & reminders</Text>
+        )}
+        <Feather name="chevron-right" size={13} color={colors.primary} style={{ marginLeft: "auto" }} />
+      </Pressable>
 
       <View style={[styles.members, { backgroundColor: colors.surface }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.memberList}>
@@ -1090,14 +1108,14 @@ export default function GroupDetailScreen() {
       )}
 
       <View style={[styles.tabBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {(["expenses", "balances", "chat", "charts"] as Tab[]).map(t => {
-          const labels: Record<Tab, string> = { expenses: "Expenses", balances: "Balances", chat: "Chat", charts: "Charts" };
+        {(["expenses", "balances", "charts", "chat"] as Tab[]).map(t => {
+          const labels: Record<Tab, string> = { expenses: "Expenses", balances: "Balances", charts: "Charts", chat: "Chat" };
           const hasUnread = t === "chat" && messages.length > 0;
           return (
             <Pressable
               key={t}
               style={[styles.tabItem, tab === t && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-              onPress={() => setTab(t)}
+              onPress={() => handleSetTab(t)}
             >
               <Text style={[styles.tabLabel, { color: tab === t ? colors.primary : colors.textSecondary }]}>
                 {labels[t]}
@@ -1191,7 +1209,7 @@ export default function GroupDetailScreen() {
             <Text style={[styles.chartTitle, { color: colors.text }]}>Per-member totals</Text>
             {group.memberIds.map(memberId => {
               const member = getMemberById(memberId);
-              const paid = groupExpenses.filter(e => e.paidById === memberId).reduce((s, e) => s + e.amount, 0);
+              const paid = groupExpenses.filter(e => e.paidById === memberId).reduce((s, e) => s + convertAmount(e.amount, e.currency, group.currency), 0);
               const pct = totalExpenses > 0 ? paid / totalExpenses : 0;
               if (!member) return null;
               return (
@@ -1285,7 +1303,7 @@ export default function GroupDetailScreen() {
         <Pressable style={styles.settleOverlay} onPress={() => setShowTripDatesModal(false)}>
           <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0 }]} onPress={e => e.stopPropagation()}>
             <View style={[styles.tripModalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Trip Dates & Reminders</Text>
+              <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Dates & Reminders</Text>
               <Pressable onPress={() => setShowTripDatesModal(false)}>
                 <Feather name="x" size={20} color={colors.textSecondary} />
               </Pressable>
@@ -1293,7 +1311,7 @@ export default function GroupDetailScreen() {
 
             <ScrollView
               style={styles.tripModalBody}
-              contentContainerStyle={{ paddingBottom: 8 }}
+              contentContainerStyle={{ paddingBottom: 32 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
@@ -1783,7 +1801,7 @@ const styles = StyleSheet.create({
   archivedBadge: { fontSize: 11, fontFamily: "Inter_500Medium" },
   expensesSectionHeader: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, marginBottom: 4, marginTop: 8,
+    marginBottom: 4, marginTop: 8,
     paddingHorizontal: 14, paddingVertical: 11,
     borderRadius: 12, borderWidth: 1,
   },
@@ -1849,6 +1867,7 @@ const styles = StyleSheet.create({
   expenseRight: { alignItems: "flex-end" },
   expenseTotal: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   expenseNet: { fontSize: 12, fontFamily: "Inter_500Medium", marginTop: 2 },
+  expenseForeignOrig: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 1 },
   settledCard: { alignItems: "center", paddingVertical: 48, paddingHorizontal: 32, gap: 12 },
   settledIcon: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
   settledTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
@@ -1920,7 +1939,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1,
   },
-  tripModalBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, flexShrink: 1 },
+  tripModalBody: { paddingHorizontal: 20, paddingTop: 16, flex: 1 },
   tripModalLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 },
   tripModalInput: {
     flexDirection: "row", alignItems: "center", gap: 8,

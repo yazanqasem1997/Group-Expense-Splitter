@@ -599,7 +599,7 @@ export default function GroupsScreen() {
                       </Text>
                       {nextLabel && (
                         <Text style={[styles.recurringBannerSub, { color: colors.textTertiary }]}>
-                          {next.description} · {nextLabel}
+                          {(() => { const g = groups.find(gr => gr.id === next.groupId); return g ? `${g.emoji} ${g.name} · ` : ""; })()}{next.description} · {nextLabel}
                         </Text>
                       )}
                     </View>

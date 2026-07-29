@@ -63,6 +63,13 @@ export default function ExpenseDetailScreen() {
 
   // Format a raw audit field value for human-readable display
   const expenseCurrency = expense.currency;
+  function fmtFieldName(field: string): string {
+    const map: Record<string, string> = {
+      description: "Description", amount: "Amount", paidById: "Paid by",
+      splitType: "Split method", splits: "Split breakdown", category: "Category", notes: "Notes",
+    };
+    return map[field] ?? field;
+  }
   function fmtAuditValue(field: string, raw: string): string {
     if (field === "amount") {
       const n = parseFloat(raw);
@@ -72,22 +79,30 @@ export default function ExpenseDetailScreen() {
       const m = getMemberById(raw);
       return m ? (m.isCurrentUser ? "You" : m.name) : raw;
     }
+    if (field === "splitType") {
+      const labels: Record<string, string> = { equal: "Equal", percentage: "By %", exact: "Exact amounts" };
+      return labels[raw] ?? raw;
+    }
+    // "splits" field values are already formatted breakdown strings — return as-is
     return raw;
   }
 
-
-  // Always have at least a synthetic "created" entry so history is never blank
-  const effectiveAuditLog: AuditEntry[] =
-    expense.auditLog && expense.auditLog.length > 0
-      ? expense.auditLog
-      : [
-          {
-            id: "synthetic_created",
-            action: "created" as const,
-            changedBy: expense.addedBy ?? expense.paidById,
-            changedAt: expense.createdAt,
-          },
-        ];
+  // Always show a "created" entry at the top — even if the stored auditLog only has
+  // "updated" entries (e.g. expense existed before audit logging was introduced).
+  const effectiveAuditLog: AuditEntry[] = (() => {
+    const log = expense.auditLog ?? [];
+    const hasCreated = log.some(e => e.action === "created");
+    if (hasCreated || log.length === 0) {
+      return log.length === 0
+        ? [{ id: "synthetic_created", action: "created" as const, changedBy: expense.addedBy ?? expense.paidById, changedAt: expense.createdAt }]
+        : log;
+    }
+    // Has update entries but no created entry — prepend synthetic one
+    return [
+      { id: "synthetic_created", action: "created" as const, changedBy: expense.addedBy ?? expense.paidById, changedAt: expense.createdAt },
+      ...log,
+    ];
+  })();
 
   function handleDelete() {
     showAlert("Delete Expense", "Are you sure you want to delete this expense?", [
@@ -408,17 +423,33 @@ export default function ExpenseDetailScreen() {
                           );
                         })()}
 
-                        {(entry.fieldChanges ?? []).map((fc, i) => (
-                          <Text key={i} style={[styles.auditChange, { color: colors.textSecondary }]}>
-                            <Text style={{ fontFamily: "Inter_600SemiBold", color: colors.textSecondary }}>
-                              {fc.field}
+                        {(entry.fieldChanges ?? []).map((fc, i) =>
+                          fc.field === "splits" ? (
+                            <View key={i} style={{ marginTop: 4, gap: 2 }}>
+                              <Text style={[styles.auditChange, { color: colors.textSecondary, fontFamily: "Inter_600SemiBold" }]}>
+                                Split breakdown changed
+                              </Text>
+                              <Text style={[styles.auditChange, { color: colors.textSecondary }]}>
+                                <Text style={{ color: colors.negative }}>Before: </Text>
+                                {fc.oldValue}
+                              </Text>
+                              <Text style={[styles.auditChange, { color: colors.textSecondary }]}>
+                                <Text style={{ color: colors.positive }}>After: </Text>
+                                {fc.newValue}
+                              </Text>
+                            </View>
+                          ) : (
+                            <Text key={i} style={[styles.auditChange, { color: colors.textSecondary }]}>
+                              <Text style={{ fontFamily: "Inter_600SemiBold", color: colors.textSecondary }}>
+                                {fmtFieldName(fc.field)}
+                              </Text>
+                              {": "}
+                              <Text style={{ color: colors.negative }}>{fmtAuditValue(fc.field, fc.oldValue)}</Text>
+                              {" → "}
+                              <Text style={{ color: colors.positive }}>{fmtAuditValue(fc.field, fc.newValue)}</Text>
                             </Text>
-                            {": "}
-                            <Text style={{ color: colors.negative }}>{fmtAuditValue(fc.field, fc.oldValue)}</Text>
-                            {" → "}
-                            <Text style={{ color: colors.positive }}>{fmtAuditValue(fc.field, fc.newValue)}</Text>
-                          </Text>
-                        ))}
+                          )
+                        )}
                         <Text style={[styles.auditTime, { color: colors.textTertiary }]}>
                           {timeAgo(entry.changedAt)}
                         </Text>
