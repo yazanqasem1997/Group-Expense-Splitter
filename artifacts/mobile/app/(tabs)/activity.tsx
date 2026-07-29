@@ -12,13 +12,13 @@ import {
   View,
 } from "react-native";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
-import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
-import { AppNotification, Expense, Settlement, useApp } from "@/context/AppContext";
+import { NotificationSheet } from "@/components/NotificationSheet";
+import { AppNotification, Expense, RecurringExpense, Settlement, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
@@ -38,14 +38,16 @@ export default function ActivityScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const {
-    expenses, settlements, getMemberById, getGroupById, currentUser,
+    expenses, settlements, recurringExpenses, groups,
+    getMemberById, getGroupById, currentUser,
     checkAndAddRecurring, fetchExchangeRates,
-    notifications, unreadNotificationCount, markAllNotificationsRead,
+    unreadNotificationCount,
     checkAndSendGroupReminders,
+    updateRecurringExpense,
   } = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [showNotifs, setShowNotifs] = useState(false);
+  const [showNotifSheet, setShowNotifSheet] = useState(false);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -67,7 +69,6 @@ export default function ActivityScreen() {
     }
   }, [filter]);
   const listRef = useRef<FlatList>(null);
-  useScrollToTop(listRef);
   useEffect(() => {
     scrollRegistry.register("activity", () => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -125,6 +126,12 @@ export default function ActivityScreen() {
 
   const expenseCount = allItems.filter(i => i.type === "expense").length;
   const settlementCount = allItems.filter(i => i.type === "settlement").length;
+
+  // Recurring schedules pinned at top: active only, across all groups the user belongs to
+  const activeRecurring = useMemo(() => {
+    const myGroupIds = new Set(groups.filter(g => g.memberIds.includes(currentUser.id)).map(g => g.id));
+    return recurringExpenses.filter(r => r.isActive && myGroupIds.has(r.groupId));
+  }, [recurringExpenses, groups, currentUser.id]);
 
   function highlightText(text: string, style: object) {
     if (!q) return <Text style={style} numberOfLines={1}>{text}</Text>;
@@ -240,6 +247,19 @@ export default function ActivityScreen() {
               {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
             </Text>
           </View>
+          <Pressable
+            style={({ pressed }) => [styles.bellBtn, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={() => setShowNotifSheet(true)}
+          >
+            <Feather name="bell" size={20} color={colors.text} />
+            {unreadNotificationCount > 0 && (
+              <View style={[styles.bellBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.bellBadgeText}>
+                  {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                </Text>
+              </View>
+            )}
+          </Pressable>
         </View>
 
         {/* Search bar */}
@@ -296,37 +316,51 @@ export default function ActivityScreen() {
         </View>
       </View>
 
-      {/* Notification banner */}
-      {unreadNotificationCount > 0 && (
-        <Pressable
-          style={[styles.notifBanner, { backgroundColor: colors.primary }]}
-          onPress={() => { setShowNotifs(v => !v); if (!showNotifs) markAllNotificationsRead(); }}
-        >
-          <View style={styles.notifBannerLeft}>
-            <View style={[styles.notifBell, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
-              <Feather name="bell" size={14} color="#fff" />
-              <View style={styles.notifDot} />
-            </View>
-            <Text style={styles.notifBannerText}>
-              {unreadNotificationCount} new nudge{unreadNotificationCount > 1 ? "s" : ""}
-            </Text>
-          </View>
-          <Feather name={showNotifs ? "chevron-up" : "chevron-down"} size={16} color="#fff" />
-        </Pressable>
-      )}
-      {showNotifs && notifications.length > 0 && (
-        <View style={[styles.notifList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {notifications.slice(0, 5).map(n => (
-            <View key={n.id} style={[styles.notifItem, { borderBottomColor: colors.border }]}>
-              <Text style={styles.notifItemEmoji}>
-                {n.tone === "friendly" ? "👋" : n.tone === "urgent" ? "🚨" : "⏰"}
-              </Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.notifItemTitle, { color: colors.text }]}>{n.title}</Text>
-                <Text style={[styles.notifItemBody, { color: colors.textSecondary }]}>{n.body}</Text>
-              </View>
-            </View>
-          ))}
+      <NotificationSheet
+        visible={showNotifSheet}
+        onClose={() => setShowNotifSheet(false)}
+      />
+
+      {/* Pinned recurring strip */}
+      {activeRecurring.length > 0 && (
+        <View style={[styles.recurStrip, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}>
+          <Text style={[styles.recurStripLabel, { color: colors.textSecondary }]}>
+            🔁 Recurring
+          </Text>
+          <FlatList
+            data={activeRecurring}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={r => r.id}
+            contentContainerStyle={styles.recurStripScroll}
+            renderItem={({ item: r }) => {
+              const grp = getGroupById(r.groupId);
+              return (
+                <Pressable
+                  style={[styles.recurCard, { backgroundColor: colors.background, borderColor: colors.border }]}
+                  onPress={() => router.push({ pathname: "/group/[id]", params: { id: r.groupId } })}
+                >
+                  <View style={styles.recurCardTop}>
+                    <Text style={styles.recurCardEmoji}>{grp?.emoji ?? "📦"}</Text>
+                    <Text style={[styles.recurCardDesc, { color: colors.text }]} numberOfLines={1}>
+                      {r.description}
+                    </Text>
+                  </View>
+                  <AmountText amount={r.amount} currency={grp?.currency ?? "USD"} style={[styles.recurCardAmt, { color: colors.primary }]} />
+                  <View style={styles.recurCardFooter}>
+                    <Text style={[styles.recurCardFreq, { color: colors.textTertiary }]}>{r.frequency}</Text>
+                    <Pressable
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      onPress={e => { e.stopPropagation(); updateRecurringExpense(r.id, { isActive: false }); }}
+                      style={[styles.recurPauseBtn, { backgroundColor: colors.warningLight }]}
+                    >
+                      <Feather name="pause" size={10} color={colors.warning} />
+                    </Pressable>
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
         </View>
       )}
 
@@ -410,16 +444,18 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   filterRow: { flexDirection: "row", gap: 7, paddingHorizontal: 2 },
-  notifBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 10 },
-  notifBannerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  notifBell: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  notifDot: { position: "absolute", top: 3, right: 3, width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#FFD600", borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" },
-  notifBannerText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
-  notifList: { borderWidth: 1, borderTopWidth: 0, gap: 0 },
-  notifItem: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 14, paddingVertical: 12, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  notifItemEmoji: { fontSize: 20, marginTop: 1 },
-  notifItemTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
-  notifItemBody: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  bellBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+    marginLeft: 6,
+  },
+  bellBadge: {
+    position: "absolute", top: 2, right: 2,
+    minWidth: 16, height: 16, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" },
   filterChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 11, paddingVertical: 7,
@@ -431,6 +467,20 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
   },
   filterCountText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+
+  recurStrip: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 10 },
+  recurStripLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6, paddingHorizontal: 16, marginBottom: 8 },
+  recurStripScroll: { paddingHorizontal: 14, gap: 10 },
+  recurCard: {
+    width: 140, padding: 10, borderRadius: 14, borderWidth: 1, gap: 4,
+  },
+  recurCardTop: { flexDirection: "row", alignItems: "center", gap: 6 },
+  recurCardEmoji: { fontSize: 14 },
+  recurCardDesc: { fontSize: 12, fontFamily: "Inter_600SemiBold", flex: 1 },
+  recurCardAmt: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  recurCardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recurCardFreq: { fontSize: 10, fontFamily: "Inter_400Regular", textTransform: "capitalize" },
+  recurPauseBtn: { width: 20, height: 20, borderRadius: 6, alignItems: "center", justifyContent: "center" },
 
   listContent: { padding: 16, gap: 2 },
   card: {

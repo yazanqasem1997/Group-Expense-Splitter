@@ -16,7 +16,6 @@ import {
 } from "react-native";
 import { showAlert } from "@/hooks/alertStore";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
-import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -34,12 +33,11 @@ export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const {
     members, currentUser, getGroupBalances, groups,
-    addMember, updateMember,
+    addMember, updateMember, removeMember,
     checkAndAddRecurring, fetchExchangeRates,
   } = useApp();
 
   const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
   useEffect(() => {
     scrollRegistry.register("friends", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -191,6 +189,26 @@ export default function FriendsScreen() {
     setEditPhoto(undefined);
   }
 
+  function handleRemoveInvite() {
+    if (!editingMember) return;
+    showAlert(
+      "Remove invite",
+      `Remove the pending invite for ${editingMember.name}? They won't be able to join using this invite.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            removeMember(editingMember.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            closeEditSheet();
+          },
+        },
+      ]
+    );
+  }
+
   // ── render helpers ─────────────────────────────────────────────────────────
 
   function renderActiveFriend(member: Member) {
@@ -247,7 +265,11 @@ export default function FriendsScreen() {
 
   function renderPendingFriend(member: Member) {
     return (
-      <View key={member.id} style={[styles.pendingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <Pressable
+        key={member.id}
+        style={({ pressed }) => [styles.pendingCard, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.93 : 1 }]}
+        onPress={() => openEditSheet(member)}
+      >
         <View style={styles.pendingLeft}>
           <Avatar name={member.name} color={member.avatarColor} size={42} imageUri={member.photo} />
           <View style={styles.pendingInfo}>
@@ -264,12 +286,12 @@ export default function FriendsScreen() {
         </View>
         <Pressable
           style={[styles.resendBtn, { borderColor: colors.border }]}
-          onPress={() => handleResend(member)}
+          onPress={e => { e.stopPropagation(); handleResend(member); }}
         >
           <Feather name="send" size={13} color={colors.primary} />
           <Text style={[styles.resendText, { color: colors.primary }]}>Resend</Text>
         </Pressable>
-      </View>
+      </Pressable>
     );
   }
 
@@ -522,6 +544,17 @@ export default function FriendsScreen() {
               ) : null}
             </ScrollView>
 
+            {/* Remove invite (pending only) */}
+            {editingMember?.isPending ? (
+              <Pressable
+                style={[styles.removeInviteBtn, { borderColor: colors.danger }]}
+                onPress={handleRemoveInvite}
+              >
+                <Feather name="user-x" size={15} color={colors.danger} />
+                <Text style={[styles.removeInviteBtnText, { color: colors.danger }]}>Remove invite</Text>
+              </Pressable>
+            ) : null}
+
             {/* Actions */}
             <View style={styles.sheetActions}>
               <Pressable
@@ -740,10 +773,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   joinedText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  removeInviteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  removeInviteBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   sheetActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 16,
+    marginTop: 12,
   },
   sheetBtn: {
     flex: 1,

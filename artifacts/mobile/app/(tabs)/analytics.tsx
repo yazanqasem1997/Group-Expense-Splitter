@@ -11,7 +11,6 @@ import {
   View,
 } from "react-native";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
-import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
 import { Currency, CURRENCY_SYMBOLS, useApp } from "@/context/AppContext";
@@ -39,7 +38,6 @@ export default function AnalyticsScreen() {
   } = useApp();
 
   const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
   useEffect(() => {
     scrollRegistry.register("analytics", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -256,6 +254,7 @@ export default function AnalyticsScreen() {
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
         contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
         refreshControl={
           <RefreshControl

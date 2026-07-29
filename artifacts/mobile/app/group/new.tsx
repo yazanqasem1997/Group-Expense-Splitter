@@ -3,7 +3,6 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-
   Platform,
   Pressable,
   ScrollView,
@@ -14,8 +13,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
+import { CurrencyPickerModal } from "@/components/CurrencyPickerModal";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { Currency, Group, Member, useApp } from "@/context/AppContext";
+import { CURRENCY_LIST, Currency, Group, useApp } from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -27,7 +27,7 @@ const GROUP_TYPES: { value: Group["type"]; label: string; emoji: string }[] = [
   { value: "other", label: "Other", emoji: "📦" },
 ];
 
-const CURRENCIES: Currency[] = ["USD", "EUR", "GBP", "AED", "CAD", "AUD", "JPY", "INR"];
+// Currency selector uses full world list from AppContext via modal picker
 
 const DEFAULT_AVATAR_COLORS = [
   "#FF6B35", "#7C3AED", "#0EA5E9", "#F59E0B",
@@ -47,8 +47,11 @@ export default function NewGroupScreen() {
   const [groupType, setGroupType] = useState<Group["type"]>("friends");
   const [currency, setCurrency] = useState<Currency>(defaultCurrency);
   const [selectedIds, setSelectedIds] = useState<string[]>([currentUser.id]);
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [pendingInvites, setPendingInvites] = useState<{ email: string; tempId: string }[]>([]);
+  const [nameError, setNameError] = useState(false);
+  const [membersError, setMembersError] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const selectedType = GROUP_TYPES.find(t => t.value === groupType)!;
@@ -92,15 +95,23 @@ export default function NewGroupScreen() {
   }
 
   function handleCreate() {
-    if (!name.trim()) {
-      showAlert("Name required", "Please enter a group name");
-      return;
-    }
     const realSelectedIds = selectedIds.filter(id => !id.startsWith("pending_"));
     const pendingCount = pendingInvites.filter(p => selectedIds.includes(p.tempId)).length;
-
+    let hasError = false;
+    if (!name.trim()) {
+      setNameError(true);
+      hasError = true;
+    } else {
+      setNameError(false);
+    }
     if (realSelectedIds.length + pendingCount < 2) {
-      showAlert("Add members", "Please add at least one other member");
+      setMembersError(true);
+      hasError = true;
+    } else {
+      setMembersError(false);
+    }
+    if (hasError) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
@@ -154,15 +165,21 @@ export default function NewGroupScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Group Name</Text>
-        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.label, { color: nameError ? colors.danger : colors.textSecondary }]}>
+          Group Name{nameError ? " — required" : ""}
+        </Text>
+        <View style={[styles.inputWrap, {
+          backgroundColor: colors.surface,
+          borderColor: nameError ? colors.danger : colors.border,
+          borderWidth: nameError ? 2 : 1,
+        }]}>
           <Text style={styles.inputEmoji}>{selectedType.emoji}</Text>
           <TextInput
             style={[styles.input, { color: colors.text }]}
             placeholder="e.g. Dubai Trip"
             placeholderTextColor={colors.textTertiary}
             value={name}
-            onChangeText={setName}
+            onChangeText={v => { setName(v); if (v.trim()) setNameError(false); }}
             autoFocus
           />
         </View>
@@ -190,27 +207,23 @@ export default function NewGroupScreen() {
         </ScrollView>
 
         <Text style={[styles.label, { color: colors.textSecondary }]}>Currency</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>
-          {CURRENCIES.map(c => (
-            <Pressable
-              key={c}
-              style={[
-                styles.currencyChip,
-                {
-                  backgroundColor: currency === c ? colors.primary : colors.surface,
-                  borderColor: currency === c ? colors.primary : colors.border,
-                },
-              ]}
-              onPress={() => setCurrency(c)}
-            >
-              <Text style={[styles.currencyLabel, { color: currency === c ? "#fff" : colors.text }]}>
-                {c}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <Pressable
+          style={[styles.currencyBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => setShowCurrencyModal(true)}
+        >
+          <Text style={[styles.currencyBtnFlag]}>
+            {CURRENCY_LIST.find(c => c.code === currency)?.flag ?? ""}
+          </Text>
+          <Text style={[styles.currencyBtnCode, { color: colors.text }]}>{currency}</Text>
+          <Text style={[styles.currencyBtnLabel, { color: colors.textSecondary }]}>
+            {CURRENCY_LIST.find(c => c.code === currency)?.label ?? ""}
+          </Text>
+          <Feather name="chevron-down" size={16} color={colors.textTertiary} style={{ marginLeft: "auto" }} />
+        </Pressable>
 
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Members</Text>
+        <Text style={[styles.label, { color: membersError ? colors.danger : colors.textSecondary }]}>
+          Members{membersError ? " — add at least one other person" : ""}
+        </Text>
 
         <View style={[styles.inviteWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Feather name="mail" size={18} color={colors.textTertiary} />
@@ -291,6 +304,14 @@ export default function NewGroupScreen() {
           })}
         </View>
       </KeyboardAwareScrollViewCompat>
+
+      <CurrencyPickerModal
+        visible={showCurrencyModal}
+        onClose={() => setShowCurrencyModal(false)}
+        value={currency}
+        onChange={setCurrency}
+        title="Group Currency"
+      />
     </View>
   );
 }
@@ -343,13 +364,42 @@ const styles = StyleSheet.create({
   },
   typeEmoji: { fontSize: 16 },
   typeLabel: { fontSize: 14, fontFamily: "Inter_500Medium" },
-  currencyChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
+  currencyChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   currencyLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  currencyBtn: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1,
+  },
+  currencyBtnFlag: { fontSize: 22 },
+  currencyBtnCode: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  currencyBtnLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  modalOverlay: {
+    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end", zIndex: 999,
+  },
+  modalSheet: {
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: "85%", paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    padding: 18, borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  currencySearch: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    height: 42, borderRadius: 12, borderWidth: 1, marginHorizontal: 16, marginVertical: 10,
+    paddingHorizontal: 12,
+  },
+  currencySearchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  currencyOption: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 18, paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  currencyOptionFlag: { fontSize: 22 },
+  currencyOptionCode: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  currencyOptionLabel: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  currencyOptionSymbol: { fontSize: 13, fontFamily: "Inter_500Medium", marginRight: 4 },
   inviteWrap: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { isLiquidGlassAvailable } from "expo-glass-effect";
-import { Tabs } from "expo-router";
+import { Tabs, usePathname } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
@@ -12,26 +12,46 @@ import { scrollRegistry } from "@/hooks/scrollRegistry";
 
 const AnyTrigger = NativeTabs.Trigger as any;
 
+/** Map a tab name to its pathname segment (index lives at "/"). */
+const TAB_PATHS: Record<string, string> = {
+  activity: "activity",
+  analytics: "analytics",
+  index: "",          // home tab — pathname is "/"
+  friends: "friends",
+  account: "account",
+};
+
 function NativeTabLayout() {
+  const pathname = usePathname();
+  // Derive which tab is currently showing from the pathname
+  const activeSegment = pathname.split("/").filter(Boolean).pop() ?? "";
+
+  function triggerIfActive(tab: string) {
+    const expected = TAB_PATHS[tab];
+    if (activeSegment === expected) {
+      scrollRegistry.trigger(tab);
+    }
+  }
+
   return (
     <NativeTabs>
-      <AnyTrigger name="activity" onPress={() => scrollRegistry.trigger("activity")}>
+      <AnyTrigger name="activity" onPress={() => triggerIfActive("activity")}>
         <Icon sf={{ default: "list.bullet", selected: "list.bullet" }} />
         <Label>Activity</Label>
       </AnyTrigger>
-      <AnyTrigger name="analytics" onPress={() => scrollRegistry.trigger("analytics")}>
+      <AnyTrigger name="analytics" onPress={() => triggerIfActive("analytics")}>
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
         <Label>Stats</Label>
       </AnyTrigger>
-      <AnyTrigger name="index" onPress={() => scrollRegistry.trigger("index")}>
+      <AnyTrigger name="index" onPress={() => triggerIfActive("index")}>
         <Icon sf={{ default: "house", selected: "house.fill" }} />
         <Label>Groups</Label>
       </AnyTrigger>
-      <AnyTrigger name="friends" onPress={() => scrollRegistry.trigger("friends")}>
+      <AnyTrigger name="friends" onPress={() => triggerIfActive("friends")}>
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
         <Label>Friends</Label>
       </AnyTrigger>
-      <AnyTrigger name="account" onPress={() => scrollRegistry.trigger("account")}>
+      <AnyTrigger name="account" onPress={() => triggerIfActive("account")}>
         <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
         <Label>Account</Label>
       </AnyTrigger>
@@ -91,7 +111,9 @@ function ClassicTabLayout() {
               <Feather name="activity" size={22} color={color} />
             ),
         }}
-        listeners={{ tabPress: () => scrollRegistry.trigger("activity") }}
+        listeners={({ navigation }) => ({
+          tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("activity"); },
+        })}
       />
       <Tabs.Screen
         name="analytics"
@@ -104,7 +126,9 @@ function ClassicTabLayout() {
               <Feather name="bar-chart-2" size={22} color={color} />
             ),
         }}
-        listeners={{ tabPress: () => scrollRegistry.trigger("analytics") }}
+        listeners={({ navigation }) => ({
+          tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("analytics"); },
+        })}
       />
       <Tabs.Screen
         name="index"
@@ -117,7 +141,9 @@ function ClassicTabLayout() {
               <Feather name="home" size={22} color={color} />
             ),
         }}
-        listeners={{ tabPress: () => scrollRegistry.trigger("index") }}
+        listeners={({ navigation }) => ({
+          tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("index"); },
+        })}
       />
       <Tabs.Screen
         name="friends"
@@ -130,7 +156,9 @@ function ClassicTabLayout() {
               <Feather name="users" size={22} color={color} />
             ),
         }}
-        listeners={{ tabPress: () => scrollRegistry.trigger("friends") }}
+        listeners={({ navigation }) => ({
+          tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("friends"); },
+        })}
       />
       <Tabs.Screen
         name="account"
@@ -143,7 +171,9 @@ function ClassicTabLayout() {
               <Feather name="user" size={22} color={color} />
             ),
         }}
-        listeners={{ tabPress: () => scrollRegistry.trigger("account") }}
+        listeners={({ navigation }) => ({
+          tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("account"); },
+        })}
       />
     </Tabs>
   );
