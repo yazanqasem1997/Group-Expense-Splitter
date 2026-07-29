@@ -1264,6 +1264,77 @@ function buildNudgeMessage(
   };
 }
 
+const defaultRecurringExpenses: RecurringExpense[] = [
+  {
+    id: "rec_1",
+    groupId: "group_2",
+    description: "Monthly Rent",
+    amount: 2400,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 800, paid: 2400 },
+      { memberId: "user_3", amount: 800 },
+      { memberId: "user_4", amount: 800 },
+    ],
+    category: "utilities",
+    frequency: "monthly",
+    timeOfDay: "09:00",
+    endType: "never",
+    occurrenceCount: 1,
+    nextDueAt: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString(),
+    isActive: true,
+    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "rec_2",
+    groupId: "group_2",
+    description: "Internet Bill",
+    amount: 60,
+    currency: "USD",
+    paidById: "user_3",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 20 },
+      { memberId: "user_3", amount: 20, paid: 60 },
+      { memberId: "user_4", amount: 20 },
+    ],
+    category: "utilities",
+    frequency: "monthly",
+    timeOfDay: "09:00",
+    endType: "never",
+    occurrenceCount: 1,
+    nextDueAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+    isActive: true,
+    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "rec_3",
+    groupId: "group_5",
+    description: "Weekly Lunch",
+    amount: 80,
+    currency: "USD",
+    paidById: "user_current",
+    splitType: "equal",
+    splits: [
+      { memberId: "user_current", amount: 20, paid: 80 },
+      { memberId: "user_3", amount: 20 },
+      { memberId: "user_6", amount: 20 },
+      { memberId: "user_7", amount: 20 },
+    ],
+    category: "food",
+    frequency: "weekly",
+    dayOfWeek: 1,
+    timeOfDay: "12:00",
+    endType: "never",
+    occurrenceCount: 4,
+    nextDueAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    isActive: false,
+    createdAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
   const [currentUser, setCurrentUser] = useState<Member>(defaultCurrentUser);
@@ -1363,7 +1434,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       const recurringStored = await AsyncStorage.getItem(RECURRING_KEY);
-      if (recurringStored) setRecurringExpenses(JSON.parse(recurringStored));
+      if (recurringStored) {
+        setRecurringExpenses(JSON.parse(recurringStored));
+      } else {
+        // Seed default recurring expenses for demo
+        const seeded = defaultRecurringExpenses;
+        setRecurringExpenses(seeded);
+        try { await AsyncStorage.setItem(RECURRING_KEY, JSON.stringify(seeded)); } catch {}
+      }
 
       const appNotifsStored = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
       if (appNotifsStored) setNotifications(JSON.parse(appNotifsStored));

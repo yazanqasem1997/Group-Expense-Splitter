@@ -27,7 +27,11 @@ import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
-import { Expense, GroupMessage, NudgeTone, Settlement, useApp } from "@/context/AppContext";
+import {
+  CURRENCY_SYMBOLS, Expense, GroupMessage, NudgeTone, RecurringExpense, RecurringFrequency,
+  RECURRING_FREQUENCY_DAYS, RECURRING_FREQUENCY_LABELS, Settlement,
+  computeNextOccurrences, useApp,
+} from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
@@ -49,6 +53,7 @@ export default function GroupDetailScreen() {
     addSettlement, addSettlements, archiveGroup, unarchiveGroup,
     addGroupMessage, getGroupMessages, updateGroup,
     checkAndAddRecurring, fetchExchangeRates, checkAndSendGroupReminders,
+    recurringExpenses, updateRecurringExpense, deleteRecurringExpense,
   } = useApp();
 
   const [tab, setTab] = useState<Tab>("expenses");
@@ -88,12 +93,29 @@ export default function GroupDetailScreen() {
   const [nudgeMaxNudges, setNudgeMaxNudges] = useState("5");
   const [nudgeTone, setNudgeTone] = useState<NudgeTone>("friendly");
 
+  // Recurring expense management
+  const [editingRecurring, setEditingRecurring] = useState<RecurringExpense | null>(null);
+  const [editRecurDesc, setEditRecurDesc] = useState("");
+  const [editRecurAmount, setEditRecurAmount] = useState("");
+  const [editRecurFreq, setEditRecurFreq] = useState<RecurringFrequency>("monthly");
+  const [editRecurCustomDays, setEditRecurCustomDays] = useState("30");
+  const [editRecurDayOfWeek, setEditRecurDayOfWeek] = useState<number | undefined>(undefined);
+  const [editRecurTimeOfDay, setEditRecurTimeOfDay] = useState("09:00");
+  const [editRecurEndType, setEditRecurEndType] = useState<"never" | "count" | "date">("never");
+  const [editRecurEndCount, setEditRecurEndCount] = useState("10");
+  const [editRecurEndDate, setEditRecurEndDate] = useState("");
+
   const group = getGroupById(id);
   const groupExpenses = getGroupExpenses(id);
   const groupSettlements = getGroupSettlements(id);
   const debts = useMemo(() => getGroupBalances(id), [id, getGroupBalances]);
   const pendingInvites = useMemo(() => getGroupPendingInvites(id), [id, getGroupPendingInvites]);
   const messages = useMemo(() => getGroupMessages(id), [id, getGroupMessages]);
+
+  const groupRecurring = useMemo(
+    () => recurringExpenses.filter(r => r.groupId === id),
+    [recurringExpenses, id]
+  );
 
   const feedItems = useMemo<FeedItem[]>(() => {
     const expItems: FeedItem[] = groupExpenses.map(e => ({ type: "expense", id: e.id, createdAt: e.createdAt, data: e }));
@@ -315,6 +337,143 @@ export default function GroupDetailScreen() {
     } catch {
       showAlert("Can't open mail app", `Send a reminder to ${recipientEmail}`);
     }
+  }
+
+  function openEditRecurring(r: RecurringExpense) {
+    setEditingRecurring(r);
+    setEditRecurDesc(r.description);
+    setEditRecurAmount(String(r.amount));
+    setEditRecurFreq(r.frequency);
+    setEditRecurCustomDays(String(r.customDays ?? 30));
+    setEditRecurDayOfWeek(r.dayOfWeek);
+    setEditRecurTimeOfDay(r.timeOfDay ?? "09:00");
+    setEditRecurEndType(r.endType ?? "never");
+    setEditRecurEndCount(String(r.endCount ?? 10));
+    setEditRecurEndDate(r.endDate ?? "");
+  }
+
+  function saveEditRecurring() {
+    if (!editingRecurring) return;
+    const amount = parseFloat(editRecurAmount);
+    if (!editRecurDesc.trim() || isNaN(amount) || amount <= 0) return;
+    const days = editRecurFreq === "custom"
+      ? Math.max(1, parseInt(editRecurCustomDays) || 30)
+      : RECURRING_FREQUENCY_DAYS[editRecurFreq];
+    // Recalculate nextDueAt from today if schedule changed
+    const nextDueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    updateRecurringExpense(editingRecurring.id, {
+      description: editRecurDesc.trim(),
+      amount,
+      frequency: editRecurFreq,
+      ...(editRecurFreq === "custom" ? { customDays: parseInt(editRecurCustomDays) || 30 } : {}),
+      dayOfWeek: editRecurDayOfWeek,
+      timeOfDay: editRecurTimeOfDay,
+      endType: editRecurEndType,
+      endCount: editRecurEndType === "count" ? (parseInt(editRecurEndCount) || 10) : undefined,
+      endDate: editRecurEndType === "date" && editRecurEndDate ? editRecurEndDate : undefined,
+      nextDueAt,
+    });
+    setEditingRecurring(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  function getRecurringStatus(r: RecurringExpense): { label: string; color: string } {
+    if (!r.isActive) {
+      if (
+        (r.endType === "count" && r.endCount !== undefined && (r.occurrenceCount ?? 0) >= r.endCount) ||
+        (r.endType === "date" && r.endDate && new Date() > new Date(r.endDate + "T23:59:59"))
+      ) {
+        return { label: "Completed", color: colors.textTertiary };
+      }
+      return { label: "Paused", color: colors.warning };
+    }
+    return { label: "Active", color: colors.success };
+  }
+
+  function renderRecurringSection() {
+    if (groupRecurring.length === 0) return null;
+    return (
+      <View style={[recurStyles.section, { backgroundColor: colors.surface }]}>
+        <View style={recurStyles.sectionHeader}>
+          <Feather name="repeat" size={15} color={colors.primary} />
+          <Text style={[recurStyles.sectionTitle, { color: colors.text }]}>Scheduled</Text>
+          <View style={[recurStyles.countBadge, { backgroundColor: colors.primaryLight }]}>
+            <Text style={[recurStyles.countBadgeText, { color: colors.primary }]}>{groupRecurring.length}</Text>
+          </View>
+        </View>
+        {groupRecurring.map(r => {
+          const status = getRecurringStatus(r);
+          const freqLabel = r.frequency === "custom"
+            ? `Every ${r.customDays ?? 30}d`
+            : RECURRING_FREQUENCY_LABELS[r.frequency];
+          const nextDate = new Date(r.nextDueAt);
+          const nextLabel = nextDate.toLocaleDateString("en", { month: "short", day: "numeric" });
+          return (
+            <View key={r.id} style={[recurStyles.card, { borderTopColor: colors.border }]}>
+              <View style={recurStyles.cardMain}>
+                <View style={[recurStyles.iconBox, { backgroundColor: colors.primaryLight }]}>
+                  <Feather name="repeat" size={16} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[recurStyles.cardDesc, { color: colors.text }]} numberOfLines={1}>{r.description}</Text>
+                  <View style={recurStyles.cardMeta}>
+                    <View style={[recurStyles.freqPill, { backgroundColor: colors.border }]}>
+                      <Text style={[recurStyles.freqPillText, { color: colors.textSecondary }]}>{freqLabel}</Text>
+                    </View>
+                    <Text style={[recurStyles.metaDot, { color: colors.textTertiary }]}>·</Text>
+                    <Text style={[recurStyles.metaText, { color: colors.textSecondary }]}>Next {nextLabel}</Text>
+                    <Text style={[recurStyles.metaDot, { color: colors.textTertiary }]}>·</Text>
+                    <View style={[recurStyles.statusDot, { backgroundColor: status.color }]} />
+                    <Text style={[recurStyles.metaText, { color: status.color }]}>{status.label}</Text>
+                  </View>
+                </View>
+                <Text style={[recurStyles.cardAmount, { color: colors.text }]}>
+                  {(group?.currency ? (CURRENCY_SYMBOLS[group.currency] ?? "") : "") + r.amount.toFixed(2)}
+                </Text>
+              </View>
+              <View style={recurStyles.cardActions}>
+                <Pressable
+                  style={[recurStyles.actionBtn, { backgroundColor: colors.primaryLight }]}
+                  onPress={() => { openEditRecurring(r); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                >
+                  <Feather name="edit-2" size={13} color={colors.primary} />
+                  <Text style={[recurStyles.actionBtnText, { color: colors.primary }]}>Edit</Text>
+                </Pressable>
+                <Pressable
+                  style={[recurStyles.actionBtn, { backgroundColor: r.isActive ? colors.warningLight : colors.successLight }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    updateRecurringExpense(r.id, { isActive: !r.isActive });
+                  }}
+                >
+                  <Feather name={r.isActive ? "pause" : "play"} size={13} color={r.isActive ? colors.warning : colors.success} />
+                  <Text style={[recurStyles.actionBtnText, { color: r.isActive ? colors.warning : colors.success }]}>
+                    {r.isActive ? "Pause" : "Resume"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[recurStyles.actionBtn, { backgroundColor: colors.dangerLight }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    showAlert(r.description, "Delete this recurring schedule?", [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => deleteRecurringExpense(r.id),
+                      },
+                    ]);
+                  }}
+                >
+                  <Feather name="trash-2" size={13} color={colors.danger} />
+                  <Text style={[recurStyles.actionBtnText, { color: colors.danger }]}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    );
   }
 
   function handleSendChat() {
@@ -823,7 +982,8 @@ export default function GroupDetailScreen() {
           data={feedItems}
           keyExtractor={item => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
-          ListEmptyComponent={<EmptyState icon="credit-card" title="No expenses yet" subtitle="Add your first expense to start splitting" />}
+          ListHeaderComponent={renderRecurringSection()}
+          ListEmptyComponent={groupRecurring.length === 0 ? <EmptyState icon="credit-card" title="No expenses yet" subtitle="Add your first expense to start splitting" /> : null}
           renderItem={({ item }) => item.type === "expense" ? renderExpenseItem(item.data) : renderSettlementItem(item.data)}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -1202,6 +1362,221 @@ export default function GroupDetailScreen() {
         visible={profileMemberId !== null}
         onClose={() => setProfileMemberId(null)}
       />
+
+      {/* Edit Recurring Expense Modal */}
+      <Modal
+        visible={!!editingRecurring}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditingRecurring(null)}
+      >
+        <Pressable style={styles.settleOverlay} onPress={() => setEditingRecurring(null)}>
+          <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0 }]} onPress={e => e.stopPropagation()}>
+            <View style={[styles.tripModalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Edit Recurring</Text>
+              <Pressable onPress={() => setEditingRecurring(null)}>
+                <Feather name="x" size={20} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+            <ScrollView
+              style={styles.tripModalBody}
+              contentContainerStyle={{ paddingBottom: 8, gap: 14 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Description */}
+              <View>
+                <Text style={[recurStyles.editLabel, { color: colors.textSecondary }]}>Description</Text>
+                <TextInput
+                  style={[recurStyles.editInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                  value={editRecurDesc}
+                  onChangeText={setEditRecurDesc}
+                  placeholder="What's this for?"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </View>
+
+              {/* Amount */}
+              <View>
+                <Text style={[recurStyles.editLabel, { color: colors.textSecondary }]}>Amount</Text>
+                <TextInput
+                  style={[recurStyles.editInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                  value={editRecurAmount}
+                  onChangeText={setEditRecurAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </View>
+
+              {/* Frequency */}
+              <View>
+                <Text style={[recurStyles.editLabel, { color: colors.textSecondary }]}>Frequency</Text>
+                <View style={recurStyles.freqRow}>
+                  {(Object.entries(RECURRING_FREQUENCY_LABELS) as [RecurringFrequency, string][]).map(([val, label]) => (
+                    <Pressable
+                      key={val}
+                      style={[
+                        recurStyles.freqChip,
+                        {
+                          backgroundColor: editRecurFreq === val ? colors.primary : colors.surface,
+                          borderColor: editRecurFreq === val ? colors.primary : colors.border,
+                        },
+                      ]}
+                      onPress={() => { setEditRecurFreq(val); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    >
+                      <Text style={[recurStyles.freqChipText, { color: editRecurFreq === val ? "#fff" : colors.textSecondary }]}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Custom days */}
+              {editRecurFreq === "custom" && (
+                <View style={[recurStyles.inlineRow, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <Text style={[recurStyles.inlineLabel, { color: colors.text }]}>Every</Text>
+                  <TextInput
+                    style={[recurStyles.inlineInput, { color: colors.text }]}
+                    value={editRecurCustomDays}
+                    onChangeText={t => setEditRecurCustomDays(t.replace(/[^0-9]/g, ""))}
+                    keyboardType="number-pad"
+                    maxLength={3}
+                    selectTextOnFocus
+                  />
+                  <Text style={[recurStyles.inlineLabel, { color: colors.text }]}>days</Text>
+                </View>
+              )}
+
+              {/* Day of week (weekly/biweekly) */}
+              {(editRecurFreq === "weekly" || editRecurFreq === "biweekly") && (
+                <View>
+                  <Text style={[recurStyles.editLabel, { color: colors.textSecondary }]}>Which day?</Text>
+                  <View style={recurStyles.dayRow}>
+                    {["S","M","T","W","T","F","S"].map((d, idx) => (
+                      <Pressable
+                        key={idx}
+                        style={[
+                          recurStyles.dayChip,
+                          {
+                            backgroundColor: editRecurDayOfWeek === idx ? colors.primary : colors.surface,
+                            borderColor: editRecurDayOfWeek === idx ? colors.primary : colors.border,
+                          },
+                        ]}
+                        onPress={() => {
+                          setEditRecurDayOfWeek(editRecurDayOfWeek === idx ? undefined : idx);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                      >
+                        <Text style={[recurStyles.dayChipText, { color: editRecurDayOfWeek === idx ? "#fff" : colors.textSecondary }]}>
+                          {d}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Time of day */}
+              <View>
+                <Text style={[recurStyles.editLabel, { color: colors.textSecondary }]}>Time of day</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  {[
+                    { label: "Morning",   sub: "9 am",  value: "09:00", icon: "☀️" },
+                    { label: "Noon",      sub: "12 pm", value: "12:00", icon: "🌤️" },
+                    { label: "Afternoon", sub: "3 pm",  value: "15:00", icon: "⛅️" },
+                    { label: "Evening",   sub: "6 pm",  value: "18:00", icon: "🌇" },
+                    { label: "Night",     sub: "10 pm", value: "22:00", icon: "🌙" },
+                  ].map(t => {
+                    const active = editRecurTimeOfDay === t.value;
+                    return (
+                      <Pressable
+                        key={t.value}
+                        style={[
+                          recurStyles.timeChip,
+                          {
+                            backgroundColor: active ? colors.primary : colors.surface,
+                            borderColor: active ? colors.primary : colors.border,
+                          },
+                        ]}
+                        onPress={() => { setEditRecurTimeOfDay(t.value); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                      >
+                        <Text style={recurStyles.timeChipEmoji}>{t.icon}</Text>
+                        <Text style={[recurStyles.timeChipLabel, { color: active ? "#fff" : colors.text }]}>{t.label}</Text>
+                        <Text style={[recurStyles.timeChipSub, { color: active ? "rgba(255,255,255,0.75)" : colors.textTertiary }]}>{t.sub}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* End condition */}
+              <View>
+                <Text style={[recurStyles.editLabel, { color: colors.textSecondary }]}>Ends</Text>
+                <View style={recurStyles.endTypeRow}>
+                  {(["never", "count", "date"] as const).map(et => (
+                    <Pressable
+                      key={et}
+                      style={[
+                        recurStyles.endTypeBtn,
+                        {
+                          backgroundColor: editRecurEndType === et ? colors.primary : colors.surface,
+                          borderColor: editRecurEndType === et ? colors.primary : colors.border,
+                        },
+                      ]}
+                      onPress={() => { setEditRecurEndType(et); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    >
+                      <Text style={[recurStyles.endTypeBtnText, { color: editRecurEndType === et ? "#fff" : colors.textSecondary }]}>
+                        {et === "never" ? "Forever" : et === "count" ? "After N times" : "Until date"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {editRecurEndType === "count" && (
+                  <View style={[recurStyles.inlineRow, { backgroundColor: colors.inputBg, borderColor: colors.border, marginTop: 8 }]}>
+                    <Text style={[recurStyles.inlineLabel, { color: colors.text }]}>After</Text>
+                    <TextInput
+                      style={[recurStyles.inlineInput, { color: colors.text }]}
+                      value={editRecurEndCount}
+                      onChangeText={t => setEditRecurEndCount(t.replace(/[^0-9]/g, ""))}
+                      keyboardType="number-pad"
+                      maxLength={3}
+                      selectTextOnFocus
+                    />
+                    <Text style={[recurStyles.inlineLabel, { color: colors.text }]}>occurrences</Text>
+                  </View>
+                )}
+                {editRecurEndType === "date" && (
+                  <View style={{ marginTop: 8 }}>
+                    <DatePickerField
+                      label="End date"
+                      value={editRecurEndDate}
+                      onChange={setEditRecurEndDate}
+                      colors={colors}
+                    />
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={[styles.settleSheetActions, { paddingHorizontal: 16, paddingBottom: 20 }]}>
+              <Pressable
+                style={[styles.settleSheetBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => setEditingRecurring(null)}
+              >
+                <Text style={[styles.settleSheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.settleSheetBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                onPress={saveEditRecurring}
+              >
+                <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1388,4 +1763,65 @@ const styles = StyleSheet.create({
   nudgeInputUnit: { fontSize: 12, fontFamily: "Inter_400Regular" },
   nudgePreview: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12, borderRadius: 10, borderWidth: 1 },
   nudgePreviewText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
+});
+
+const recurStyles = StyleSheet.create({
+  section: {
+    borderRadius: 16, marginBottom: 10,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+    overflow: "hidden",
+  },
+  sectionHeader: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  sectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1 },
+  countBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  countBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  card: { borderTopWidth: 1, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12 },
+  cardMain: { flexDirection: "row", alignItems: "center", gap: 10 },
+  iconBox: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  cardDesc: { fontSize: 14, fontFamily: "Inter_500Medium", marginBottom: 4 },
+  cardMeta: { flexDirection: "row", alignItems: "center", gap: 5 },
+  freqPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
+  freqPillText: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  metaDot: { fontSize: 12 },
+  metaText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  cardAmount: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginLeft: 4 },
+  cardActions: { flexDirection: "row", gap: 8, marginTop: 10 },
+  actionBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+  },
+  actionBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  // Edit modal styles
+  editLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 },
+  editInput: {
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 44,
+    fontSize: 15, fontFamily: "Inter_400Regular",
+  },
+  freqRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  freqChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  freqChipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  inlineRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 44,
+  },
+  inlineLabel: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  inlineInput: { width: 56, fontSize: 16, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  dayRow: { flexDirection: "row", gap: 8 },
+  dayChip: {
+    width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1,
+  },
+  dayChipText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  timeChip: {
+    alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, gap: 2,
+  },
+  timeChipEmoji: { fontSize: 18 },
+  timeChipLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  timeChipSub: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  endTypeRow: { flexDirection: "row", gap: 8 },
+  endTypeBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: "center", borderWidth: 1 },
+  endTypeBtnText: { fontSize: 12, fontFamily: "Inter_500Medium" },
 });
