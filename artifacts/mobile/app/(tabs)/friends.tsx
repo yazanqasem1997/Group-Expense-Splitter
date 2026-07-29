@@ -209,6 +209,37 @@ export default function FriendsScreen() {
     );
   }
 
+  function handleRemoveFriend() {
+    if (!editingMember) return;
+    const sharedGroupsWithBalance = groups.filter(g => {
+      if (!g.memberIds.includes(editingMember.id)) return false;
+      const debts = getGroupBalances(g.id);
+      return debts.some(
+        d => d.fromId === editingMember.id || d.toId === editingMember.id
+      );
+    });
+    const hasOutstandingBalance = sharedGroupsWithBalance.length > 0;
+    const warningLine = hasOutstandingBalance
+      ? `\n\nWarning: you still have unsettled balances with them in ${sharedGroupsWithBalance.length} group${sharedGroupsWithBalance.length > 1 ? "s" : ""}.`
+      : "";
+    showAlert(
+      "Remove friend",
+      `Remove ${editingMember.name} from your friends list?${warningLine}`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            removeMember(editingMember.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            closeEditSheet();
+          },
+        },
+      ]
+    );
+  }
+
   // ── render helpers ─────────────────────────────────────────────────────────
 
   function renderActiveFriend(member: Member) {
@@ -552,6 +583,17 @@ export default function FriendsScreen() {
               >
                 <Feather name="user-x" size={15} color={colors.danger} />
                 <Text style={[styles.removeInviteBtnText, { color: colors.danger }]}>Remove invite</Text>
+              </Pressable>
+            ) : null}
+
+            {/* Remove friend (active only) */}
+            {editingMember && !editingMember.isPending ? (
+              <Pressable
+                style={[styles.removeInviteBtn, { borderColor: colors.danger }]}
+                onPress={handleRemoveFriend}
+              >
+                <Feather name="user-x" size={15} color={colors.danger} />
+                <Text style={[styles.removeInviteBtnText, { color: colors.danger }]}>Remove friend</Text>
               </Pressable>
             ) : null}
 
