@@ -769,7 +769,7 @@ export default function GroupDetailScreen() {
                 onPress={() => setProfileMemberId(isMyDebt ? debt.toId : debt.fromId)}
                 style={styles.debtAvatarNamePressable}
               >
-                <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? "#ccc"} size={40} imageUri={from?.photo} />
+                <Avatar name={isMyDebt ? (to?.name ?? "") : (from?.name ?? "")} color={isMyDebt ? (to?.avatarColor ?? "#ccc") : (from?.avatarColor ?? "#ccc")} size={40} imageUri={isMyDebt ? to?.photo : from?.photo} />
               </Pressable>
               <Pressable
                 style={styles.debtBody}
