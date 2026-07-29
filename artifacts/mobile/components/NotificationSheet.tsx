@@ -10,14 +10,33 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppNotification, NudgeTone, useApp } from "@/context/AppContext";
+import { AppNotification, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
-function toneEmoji(tone?: NudgeTone): string {
-  if (tone === "friendly") return "👋";
-  if (tone === "urgent") return "🚨";
-  return "⏰";
+function notifEmoji(n: AppNotification): string {
+  switch (n.type) {
+    case "expense_added":      return "💸";
+    case "expense_edited":     return "✏️";
+    case "expense_deleted":    return "🗑️";
+    case "settlement_recorded":return "✅";
+    case "settlement_deleted": return "↩️";
+    case "member_added":       return "👋";
+    case "member_removed":     return "👤";
+    case "group_updated":      return "⚙️";
+    case "group_archived":     return "📦";
+    case "group_ended":        return "🔒";
+    case "comment_added":      return "💬";
+    case "recurring_added":    return "🔄";
+    case "recurring_updated":  return "🔄";
+    case "recurring_deleted":  return "🔕";
+    case "recurring_fired":    return "⚡";
+    case "settlement_reminder":
+    default:
+      if (n.tone === "friendly") return "👋";
+      if (n.tone === "urgent")   return "🚨";
+      return "⏰";
+  }
 }
 
 interface Props {
@@ -31,7 +50,6 @@ export function NotificationSheet({ visible, onClose }: Props) {
   const { notifications, markAllNotificationsRead, dismissNotification, getGroupById } = useApp();
 
   function handleOpen() {
-    // Mark all read whenever the sheet opens
     markAllNotificationsRead();
   }
 
@@ -92,7 +110,7 @@ export function NotificationSheet({ visible, onClose }: Props) {
             </View>
             <Text style={[styles.emptyTitle, { color: colors.text }]}>All caught up</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-              Nudge reminders and settlement alerts will appear here
+              Expenses, payments, group changes and reminders will appear here
             </Text>
           </View>
         ) : (
@@ -147,7 +165,7 @@ function NotificationCard({ notification: n, groupName, groupEmoji, onGroupPress
       <View style={styles.cardInner}>
         {/* Top row: emoji + title + dismiss */}
         <View style={styles.cardTopRow}>
-          <Text style={styles.cardEmoji}>{toneEmoji(n.tone)}</Text>
+          <Text style={styles.cardEmoji}>{notifEmoji(n)}</Text>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
             {n.title}
           </Text>

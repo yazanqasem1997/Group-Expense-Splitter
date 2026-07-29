@@ -281,8 +281,25 @@ export interface NudgeCampaign {
 
 export interface AppNotification {
   id: string;
-  type: "settlement_reminder" | "recurring_fired";
+  type:
+    | "settlement_reminder"
+    | "recurring_fired"
+    | "expense_added"
+    | "expense_edited"
+    | "expense_deleted"
+    | "settlement_recorded"
+    | "settlement_deleted"
+    | "member_added"
+    | "member_removed"
+    | "group_updated"
+    | "group_archived"
+    | "group_ended"
+    | "comment_added"
+    | "recurring_added"
+    | "recurring_updated"
+    | "recurring_deleted";
   groupId?: string;
+  expenseId?: string;
   title: string;
   body: string;
   createdAt: string;
@@ -1299,7 +1316,13 @@ const defaultGroupMessages: GroupMessage[] = [
   },
 ];
 
-function rawPairwiseDebts(groupExpenses: Expense[], groupSettlements: Settlement[], memberIds: string[]): DebtRelation[] {
+function rawPairwiseDebts(
+  groupExpenses: Expense[],
+  groupSettlements: Settlement[],
+  memberIds: string[],
+  groupCurrency: Currency,
+  converter: (amount: number, from: Currency, to: Currency) => number,
+): DebtRelation[] {
   // net[A][B] = amount A is owed by B (positive = A is creditor vs B)
   const net: Record<string, Record<string, number>> = {};
 
@@ -1315,14 +1338,20 @@ function rawPairwiseDebts(groupExpenses: Expense[], groupSettlements: Settlement
     if (!memberIds.includes(payer)) return;
     expense.splits.forEach(split => {
       if (split.memberId === payer || !memberIds.includes(split.memberId)) return;
-      adjust(payer, split.memberId, split.amount);
+      const amt = expense.currency !== groupCurrency
+        ? converter(split.amount, expense.currency, groupCurrency)
+        : split.amount;
+      adjust(payer, split.memberId, amt);
     });
   });
 
   // A settlement where fromId pays toId reduces toId's credit against fromId
   groupSettlements.forEach(s => {
     if (!memberIds.includes(s.fromId) || !memberIds.includes(s.toId)) return;
-    adjust(s.toId, s.fromId, -s.amount);
+    const amt = s.currency !== groupCurrency
+      ? converter(s.amount, s.currency, groupCurrency)
+      : s.amount;
+    adjust(s.toId, s.fromId, -amt);
   });
 
   const result: DebtRelation[] = [];
@@ -1506,6 +1535,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>(defaultGroupMessages);
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  // Push a notification to the persistent inbox. Uses AsyncStorage directly so it
+  // can be called from any mutation without depending on the saveNotifications callback.
+  const pushNotif = useCallback((notif: Omit<AppNotification, "id" | "createdAt" | "read">) => {
+    const entry: AppNotification = { ...notif, id: genId(), createdAt: new Date().toISOString(), read: false };
+    setNotifications(prev => {
+      const updated = [entry, ...prev];
+      AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
+
   const [isLoading, setIsLoading] = useState(true);
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
   const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
@@ -1725,11 +1766,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const removeMember = useCallback(
     (id: string) => {
+      const target = members.find(m => m.id === id);
       const updated = members.filter(m => m.id !== id);
       setMembers(updated);
       saveData(updated, groups, expenses, settlements, invitations);
+      if (target) pushNotif({ type: "member_removed", title: "Member removed", body: `${target.name} was removed from the group` });
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, pushNotif]
   );
 
   const addMember = useCallback(
@@ -1744,9 +1787,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = [...members, newMember];
       setMembers(updated);
       saveData(updated, groups, expenses, settlements, invitations);
+      pushNotif({ type: "member_added", title: "Member added", body: `${member.name} was added to the group` });
       return newMember;
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, pushNotif]
   );
 
   const addGroup = useCallback(
@@ -1767,23 +1811,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateGroup = useCallback(
     (id: string, updates: Partial<Group>) => {
+      const prev = groups.find(g => g.id === id);
       const updated = groups.map(g => (g.id === id ? { ...g, ...updates } : g));
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
+      if (prev) pushNotif({ type: "group_updated", groupId: id, title: "Group updated", body: `"${prev.name}" settings were updated` });
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, pushNotif]
   );
 
   const archiveGroup = useCallback(
     (id: string) => {
+      const prev = groups.find(g => g.id === id);
       const updated = groups.map(g =>
         g.id === id ? { ...g, isArchived: true, archivedAt: new Date().toISOString() } : g
       );
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
       showToast("Group archived", "info");
+      if (prev) pushNotif({ type: "group_archived", groupId: id, title: "Group archived", body: `"${prev.name}" has been archived` });
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif]
   );
 
   const unarchiveGroup = useCallback(
@@ -1800,14 +1848,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const endGroup = useCallback(
     (id: string) => {
+      const prev = groups.find(g => g.id === id);
       const updated = groups.map(g =>
         g.id === id ? { ...g, isEnded: true, endedAt: new Date().toISOString() } : g
       );
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
       showToast("Group period ended", "info");
+      if (prev) pushNotif({ type: "group_ended", groupId: id, title: "Group ended", body: `"${prev.name}" period has ended` });
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif]
   );
 
   const assignAdmin = useCallback(
@@ -1894,8 +1944,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (notifPrefs.expenseAdded) {
         showToast(`"${expense.description}" added to group`, "success");
       }
+      const grp = groups.find(g => g.id === expense.groupId);
+      pushNotif({
+        type: "expense_added",
+        groupId: expense.groupId,
+        expenseId: newExpense.id,
+        title: "Expense added",
+        body: `"${expense.description}" (${expense.amount.toFixed(2)} ${expense.currency}) was added${grp ? ` to ${grp.name}` : ""}`,
+      });
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id, pushNotif]
   );
 
   const updateExpense = useCallback(
@@ -1904,7 +1962,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const isRealEdit = !updates.reactions && !updates.comments;
       let updatedExpenses: Expense[];
       if (isRealEdit && prev) {
-        const trackedFields: (keyof Expense)[] = ["description", "amount", "paidById", "splitType", "category", "notes"];
+        const trackedFields: (keyof Expense)[] = ["description", "amount", "currency", "paidById", "splitType", "category", "notes"];
         const fieldChanges: AuditEntry["fieldChanges"] = [];
         trackedFields.forEach(field => {
           const oldVal = String(prev[field] ?? "");
@@ -1913,6 +1971,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             fieldChanges.push({ field, oldValue: oldVal, newValue: newVal });
           }
         });
+
+        // Track splits — record per-person breakdown so the audit shows actual share changes
+        if (updates.splits !== undefined) {
+          const newSplitType = updates.splitType ?? prev.splitType;
+          const fmtBreakdown = (splits: SplitDetail[], type: SplitType) =>
+            splits.map(s => {
+              const m = members.find(mbr => mbr.id === s.memberId);
+              const name = m ? (m.isCurrentUser ? "You" : m.name.split(" ")[0]) : "?";
+              if (type === "percentage") return `${name}: ${(s.percentage ?? 0).toFixed(0)}%`;
+              return `${name}: ${s.amount.toFixed(2)}`;
+            }).join(", ");
+          const oldBreakdown = fmtBreakdown(prev.splits, prev.splitType);
+          const newBreakdown = fmtBreakdown(updates.splits, newSplitType);
+          if (oldBreakdown !== newBreakdown) {
+            fieldChanges.push({ field: "splits", oldValue: oldBreakdown, newValue: newBreakdown });
+          }
+        }
+
         const auditEntry: AuditEntry = {
           id: genId(),
           action: "updated",
@@ -1920,9 +1996,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           changedAt: new Date().toISOString(),
           ...(fieldChanges.length > 0 ? { fieldChanges } : {}),
         };
+
+        // Preserve "created" entry: if the existing log has no "created" entry (e.g. expense
+        // was added before audit logging was introduced), prepend a synthetic one so the full
+        // history is never truncated after the first edit.
+        const existingLog = prev.auditLog ?? [];
+        const hasCreatedEntry = existingLog.some(entry => entry.action === "created");
+        const syntheticCreated: AuditEntry = {
+          id: `synthetic_created_${id}`,
+          action: "created",
+          changedBy: prev.addedBy ?? prev.paidById,
+          changedAt: prev.createdAt,
+        };
+        const fullLog = hasCreatedEntry
+          ? [...existingLog, auditEntry]
+          : [syntheticCreated, ...existingLog, auditEntry];
+
         updatedExpenses = expenses.map(e =>
           e.id === id
-            ? { ...e, ...updates, auditLog: [...(e.auditLog ?? []), auditEntry] }
+            ? { ...e, ...updates, auditLog: fullLog }
             : e
         );
       } else {
@@ -1933,8 +2025,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (notifPrefs.expenseEdited && prev && isRealEdit) {
         showToast(`"${prev.description}" was updated`, "info");
       }
+      if (prev && isRealEdit) {
+        const grp = groups.find(g => g.id === prev.groupId);
+        pushNotif({
+          type: "expense_edited",
+          groupId: prev.groupId,
+          expenseId: id,
+          title: "Expense updated",
+          body: `"${prev.description}" was edited${grp ? ` in ${grp.name}` : ""}`,
+        });
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id, pushNotif]
   );
 
   const deleteExpense = useCallback(
@@ -1946,14 +2048,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (notifPrefs.expenseDeleted && target) {
         showToast(`"${target.description}" deleted`, "warning");
       }
+      if (target) {
+        const grp = groups.find(g => g.id === target.groupId);
+        pushNotif({
+          type: "expense_deleted",
+          groupId: target.groupId,
+          title: "Expense removed",
+          body: `"${target.description}" (${target.amount.toFixed(2)} ${target.currency}) was removed${grp ? ` from ${grp.name}` : ""}`,
+        });
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
   );
 
   const addExpenseComment = useCallback(
     (expenseId: string, text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      const expense = expenses.find(e => e.id === expenseId);
       const newComment: ExpenseComment = {
         id: genId(),
         memberId: currentUser.id,
@@ -1970,8 +2082,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (notifPrefs.comment) {
         showToast("Comment added", "success");
       }
+      if (expense) {
+        const grp = groups.find(g => g.id === expense.groupId);
+        pushNotif({
+          type: "comment_added",
+          groupId: expense.groupId,
+          expenseId,
+          title: "New comment",
+          body: `A comment was added to "${expense.description}"${grp ? ` in ${grp.name}` : ""}`,
+        });
+      }
     },
-    [currentUser.id, members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
   );
 
   const toggleReaction = useCallback(
@@ -2014,8 +2136,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (notifPrefs.settlement) {
         showToast("Settlement recorded ✓", "success");
       }
+      const grp = groups.find(g => g.id === settlement.groupId);
+      const toMember = members.find(m => m.id === settlement.toId);
+      pushNotif({
+        type: "settlement_recorded",
+        groupId: settlement.groupId,
+        title: "Payment recorded",
+        body: `${settlement.amount.toFixed(2)} ${settlement.currency} paid${toMember ? ` to ${toMember.name}` : ""}${grp ? ` in ${grp.name}` : ""}`,
+      });
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
   );
 
   const addSettlements = useCallback(
@@ -2033,8 +2163,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (notifPrefs.settlement) {
         showToast(`${created.length} settlement${created.length > 1 ? "s" : ""} recorded ✓`, "success");
       }
+      // One notification per group covered by the batch
+      const groupIds = [...new Set(created.map(s => s.groupId))];
+      groupIds.forEach(gid => {
+        const grp = groups.find(g => g.id === gid);
+        const batch = created.filter(s => s.groupId === gid);
+        pushNotif({
+          type: "settlement_recorded",
+          groupId: gid,
+          title: `${batch.length > 1 ? `${batch.length} payments` : "Payment"} recorded`,
+          body: `${batch.length > 1 ? `${batch.length} settlements` : `${batch[0].amount.toFixed(2)} ${batch[0].currency} settlement`} recorded${grp ? ` in ${grp.name}` : ""}`,
+        });
+      });
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
   );
 
   const deleteSettlement = useCallback(
@@ -2043,9 +2185,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = settlements.filter(s => s.id !== id);
       setSettlements(updated);
       saveData(members, groups, expenses, updated, invitations);
-      if (target) showToast("Settlement removed", "warning");
+      if (target) {
+        showToast("Settlement removed", "warning");
+        const grp = groups.find(g => g.id === target.groupId);
+        pushNotif({
+          type: "settlement_deleted",
+          groupId: target.groupId,
+          title: "Payment removed",
+          body: `A ${target.amount.toFixed(2)} ${target.currency} settlement was removed${grp ? ` from ${grp.name}` : ""}`,
+        });
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif]
   );
 
   const sendGroupInvite = useCallback(
@@ -2140,7 +2291,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const groupSettlements = settlements.filter(s => s.groupId === groupId);
 
       if (!simplifyDebtsEnabled) {
-        return rawPairwiseDebts(groupExpenses, groupSettlements, group.memberIds);
+        return rawPairwiseDebts(groupExpenses, groupSettlements, group.memberIds, group.currency, convertAmount);
       }
 
       const netBalances: Record<string, number> = {};
@@ -2152,21 +2303,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         expense.splits.forEach(split => {
           if (!(split.memberId in netBalances)) return;
           if (split.memberId !== payer) {
-            netBalances[payer] = (netBalances[payer] || 0) + split.amount;
-            netBalances[split.memberId] = (netBalances[split.memberId] || 0) - split.amount;
+            // Convert to group base currency so mixed-currency expenses balance correctly
+            const amt = expense.currency !== group.currency
+              ? convertAmount(split.amount, expense.currency, group.currency)
+              : split.amount;
+            netBalances[payer] = (netBalances[payer] || 0) + amt;
+            netBalances[split.memberId] = (netBalances[split.memberId] || 0) - amt;
           }
         });
       });
 
       groupSettlements.forEach(settlement => {
         if (!(settlement.fromId in netBalances) || !(settlement.toId in netBalances)) return;
-        netBalances[settlement.fromId] = (netBalances[settlement.fromId] || 0) + settlement.amount;
-        netBalances[settlement.toId] = (netBalances[settlement.toId] || 0) - settlement.amount;
+        const amt = settlement.currency !== group.currency
+          ? convertAmount(settlement.amount, settlement.currency, group.currency)
+          : settlement.amount;
+        netBalances[settlement.fromId] = (netBalances[settlement.fromId] || 0) + amt;
+        netBalances[settlement.toId] = (netBalances[settlement.toId] || 0) - amt;
       });
 
       return simplifyDebts(netBalances);
     },
-    [groups, expenses, settlements, simplifyDebtsEnabled]
+    [groups, expenses, settlements, simplifyDebtsEnabled, convertAmount]
   );
 
   const getTotalOwed = useCallback(() => {
@@ -2240,27 +2398,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setRecurringExpenses(updated);
       saveRecurring(updated);
       showToast(`Recurring "${r.description}" set up ✓`, "success");
+      const grp = groups.find(g => g.id === r.groupId);
+      pushNotif({
+        type: "recurring_added",
+        groupId: r.groupId,
+        title: "Recurring schedule created",
+        body: `"${r.description}" will repeat ${r.frequency}${grp ? ` in ${grp.name}` : ""}`,
+      });
       return newR;
     },
-    [recurringExpenses, saveRecurring, showToast]
+    [recurringExpenses, saveRecurring, showToast, groups, pushNotif]
   );
 
   const updateRecurringExpense = useCallback(
     (id: string, updates: Partial<RecurringExpense>) => {
+      const target = recurringExpenses.find(r => r.id === id);
       const updated = recurringExpenses.map(r => r.id === id ? { ...r, ...updates } : r);
       setRecurringExpenses(updated);
       saveRecurring(updated);
+      if (target) {
+        const grp = groups.find(g => g.id === target.groupId);
+        pushNotif({
+          type: "recurring_updated",
+          groupId: target.groupId,
+          title: "Recurring schedule updated",
+          body: `"${target.description}" schedule was updated${grp ? ` in ${grp.name}` : ""}`,
+        });
+      }
     },
-    [recurringExpenses, saveRecurring]
+    [recurringExpenses, saveRecurring, groups, pushNotif]
   );
 
   const deleteRecurringExpense = useCallback(
     (id: string) => {
+      const target = recurringExpenses.find(r => r.id === id);
       const updated = recurringExpenses.filter(r => r.id !== id);
       setRecurringExpenses(updated);
       saveRecurring(updated);
+      if (target) {
+        const grp = groups.find(g => g.id === target.groupId);
+        pushNotif({
+          type: "recurring_deleted",
+          groupId: target.groupId,
+          title: "Recurring schedule removed",
+          body: `"${target.description}" recurring schedule was deleted${grp ? ` from ${grp.name}` : ""}`,
+        });
+      }
     },
-    [recurringExpenses, saveRecurring]
+    [recurringExpenses, saveRecurring, groups, pushNotif]
   );
 
   const saveNotifications = useCallback(async (notifs: AppNotification[]) => {

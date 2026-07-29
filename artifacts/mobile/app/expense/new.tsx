@@ -19,6 +19,7 @@ import { Avatar } from "@/components/Avatar";
 import { BUILTIN_CATEGORY_CONFIG } from "@/components/CategoryIcon";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import {
+  Currency,
   CURRENCY_SYMBOLS,
   RECURRING_FREQUENCY_DAYS,
   RECURRING_FREQUENCY_LABELS,
@@ -27,6 +28,7 @@ import {
   computeNextOccurrences,
   useApp,
 } from "@/context/AppContext";
+import { CurrencyPickerModal } from "@/components/CurrencyPickerModal";
 import { DatePickerField } from "@/components/DatePickerField";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
@@ -99,6 +101,10 @@ export default function NewExpenseScreen() {
   const [endCount, setEndCount] = useState("10");
   const [endDateStr, setEndDateStr] = useState("");
   const [newCatName, setNewCatName] = useState("");
+  const [expenseCurrency, setExpenseCurrency] = useState<Currency>(
+    existingExpense?.currency ?? group?.currency ?? "USD"
+  );
+  const [showExpCurrencyPicker, setShowExpCurrencyPicker] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const amount = parseFloat(amountStr) || 0;
@@ -122,7 +128,7 @@ export default function NewExpenseScreen() {
       })(),
     }, 6);
   }, [isRecurring, recurringFrequency, customDays, recurringDayOfWeek, endType, endCount, endDateStr]);
-  const currencySymbol = group ? (CURRENCY_SYMBOLS[group.currency] ?? group.currency + " ") : "$";
+  const currencySymbol = CURRENCY_SYMBOLS[expenseCurrency] ?? expenseCurrency + " ";
 
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -296,6 +302,7 @@ export default function NewExpenseScreen() {
       updateExpense(existingExpense.id, {
         description: description.trim(),
         amount,
+        currency: expenseCurrency,
         paidById,
         splitType,
         splits,
@@ -306,7 +313,7 @@ export default function NewExpenseScreen() {
         groupId: group.id,
         description: description.trim(),
         amount,
-        currency: group.currency,
+        currency: expenseCurrency,
         paidById,
         splitType,
         splits,
@@ -323,7 +330,7 @@ export default function NewExpenseScreen() {
           groupId: group.id,
           description: description.trim(),
           amount,
-          currency: group.currency,
+          currency: expenseCurrency,
           paidById,
           splitType,
           splits,
@@ -397,18 +404,32 @@ export default function NewExpenseScreen() {
             { backgroundColor: colors.surface },
             amountError && { borderWidth: 2, borderColor: colors.danger },
           ]}>
-            <Text style={[styles.currencySymbol, { color: amountError ? colors.danger : colors.primary }]}>
-              {currencySymbol}
-            </Text>
-            <TextInput
-              style={[styles.amountInput, { color: colors.text }]}
-              placeholder="0.00"
-              placeholderTextColor={colors.textTertiary}
-              value={amountStr}
-              onChangeText={t => { setAmountStr(t); if (parseFloat(t) > 0) setAmountError(false); }}
-              keyboardType="decimal-pad"
-              autoFocus
-            />
+            <Pressable
+              onPress={() => setShowExpCurrencyPicker(true)}
+              style={[styles.expCurrencyChip, { backgroundColor: colors.primaryLight ?? colors.surface, borderColor: colors.primary }]}
+            >
+              <Text style={[styles.expCurrencyChipText, { color: colors.primary }]}>{expenseCurrency}</Text>
+              <Feather name="chevron-down" size={11} color={colors.primary} />
+            </Pressable>
+            <View style={styles.amountRow}>
+              <Text style={[styles.currencySymbol, { color: amountError ? colors.danger : colors.primary }]}>
+                {currencySymbol}
+              </Text>
+              <TextInput
+                style={[styles.amountInput, { color: colors.text }]}
+                placeholder="0.00"
+                placeholderTextColor={colors.textTertiary}
+                value={amountStr}
+                onChangeText={t => { setAmountStr(t); if (parseFloat(t) > 0) setAmountError(false); }}
+                keyboardType="decimal-pad"
+                autoFocus
+              />
+            </View>
+            {group && expenseCurrency !== group.currency && (
+              <Text style={[styles.expCurrencyNote, { color: colors.textTertiary }]}>
+                Balances converted to {group.currency}
+              </Text>
+            )}
           </View>
           {amountError && (
             <Text style={[styles.fieldErrorHint, { color: colors.danger }]}>
@@ -883,6 +904,13 @@ export default function NewExpenseScreen() {
         )}
 
       </KeyboardAwareScrollViewCompat>
+
+      <CurrencyPickerModal
+        visible={showExpCurrencyPicker}
+        value={expenseCurrency}
+        onChange={(c: Currency) => { setExpenseCurrency(c); setShowExpCurrencyPicker(false); }}
+        onClose={() => setShowExpCurrencyPicker(false)}
+      />
     </View>
   );
 }
@@ -914,13 +942,20 @@ const styles = StyleSheet.create({
   saveBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   content: { padding: 20, gap: 14 },
   amountCard: {
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 24,
+    paddingVertical: 20,
     borderRadius: 20,
-    gap: 4,
+    gap: 6,
   },
+  amountRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  expCurrencyChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1,
+  },
+  expCurrencyChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  expCurrencyNote: { fontSize: 12, fontFamily: "Inter_400Regular" },
   currencySymbol: { fontSize: 36, fontFamily: "Inter_700Bold" },
   amountInput: { fontSize: 52, fontFamily: "Inter_700Bold", minWidth: 120, textAlign: "center" },
   descRow: { flexDirection: "row", alignItems: "center", gap: 8 },
