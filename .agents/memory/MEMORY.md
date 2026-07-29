@@ -1,4 +1,7 @@
 - [React Compiler for-of crash](react-compiler-forof.md) — avoid `for (const [k,v] of Object.entries(...))` inside hooks/components; use `Object.keys().forEach()` instead.
+- [Clerk Expo Auth](clerk-expo-auth.md) — v4/Core v3 setup, proxy wiring, custom screens, JIT user provisioning, bearer token transport.
+- [Production Backend](production-backend.md) — schema, routes, idempotency (atomic reservation), CORS, recurring scheduler, member identity model, known gaps.
+- [AppContext server migration](appcontext-server-migration.md) — bootstrap flow, runServerSync pattern, one-time import, local-only items, toast type ("warning" not "danger").
 - [Theme toggle pattern](theme-toggle.md) — useColorScheme() alone can't be overridden in-app; requires ThemeContext with AsyncStorage persistence wrapping the whole tree.
 - [AppAlert layering fix](appalert-modal.md) — AppAlert must use RN Modal (not absolute View) to render above other Modals; zIndex/elevation on Views cannot beat native Modal layer.
 - [Group feed architecture](group-feed.md) — group/[id].tsx uses a FeedItem union type combining Expense + Settlement, sorted by createdAt; audit log (AuditEntry[]) lives on each Expense.

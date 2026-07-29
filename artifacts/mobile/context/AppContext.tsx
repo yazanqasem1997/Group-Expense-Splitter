@@ -1,8 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "@clerk/expo";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { useToast } from "@/context/ToastContext";
-import { processOverdueRecurring } from "@/services/backgroundRecurring";
+import {
+  api,
+  fetchBootstrap,
+  importLocalSnapshot,
+  newIdempotencyKey,
+  toUserMessage,
+  type LegacySnapshot,
+} from "@/services/apiSync";
 
 /** All ISO 4217 currencies are valid — the type is kept broad for extensibility. */
 export type Currency = string;
@@ -192,6 +200,8 @@ export interface Member {
   joinedAt?: string;
   isCurrentUser?: boolean;
   isPending?: boolean;
+  /** Linked user account id (undefined for guest/placeholder members). */
+  userId?: string;
 }
 
 export interface SplitDetail {
@@ -428,6 +438,8 @@ export interface GroupInvitation {
   invitedMemberId?: string;
   status: "pending" | "accepted" | "declined";
   createdAt: string;
+  /** Server-issued acceptance token (present for invitations synced from the API). */
+  token?: string;
 }
 
 export interface Balance {
@@ -513,6 +525,13 @@ const STORAGE_KEY = "spliteasy_data_v3";
 const MESSAGES_KEY = "@spliteasy_messages";
 const RECURRING_KEY = "@spliteasy_recurring";
 const NOTIFICATIONS_KEY = "@spliteasy_notifications";
+/**
+ * Offline cache of the last server bootstrap snapshot. AsyncStorage is used
+ * only as a cache/offline read — the production API is the source of truth.
+ */
+const SERVER_CACHE_KEY = "@spliteasy_server_cache_v1";
+/** Marks that the legacy v3 local snapshot was already migrated via POST /api/imports. */
+const MIGRATION_DONE_KEY = "@spliteasy_migrated_v3_to_server";
 
 const DEFAULT_AVATAR_COLORS = [
   "#FF6B35", "#7C3AED", "#0EA5E9", "#F59E0B",
@@ -1316,6 +1335,24 @@ const defaultGroupMessages: GroupMessage[] = [
   },
 ];
 
+/** Ids of the seeded demo groups shipped with the app. */
+const DEMO_GROUP_IDS = new Set([
+  "group_1", "group_2", "group_3", "group_4", "group_5",
+  "group_6", "group_7", "group_8", "group_9", "group_10",
+]);
+
+/**
+ * Heuristic that distinguishes a user's real stored data from the seeded demo
+ * defaults. We only migrate snapshots that contain at least one group the user
+ * created (i.e. a group id outside the known demo set). This guarantees the
+ * demo defaults are never auto-imported to the server.
+ */
+function isRealUserSnapshot(snapshot: LegacySnapshot): boolean {
+  const groups = snapshot.groups ?? [];
+  if (groups.length === 0) return false;
+  return groups.some(g => !DEMO_GROUP_IDS.has(g.id));
+}
+
 function rawPairwiseDebts(
   groupExpenses: Expense[],
   groupSettlements: Settlement[],
@@ -1526,15 +1563,42 @@ const defaultRecurringExpenses: RecurringExpense[] = [
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
+  const { isSignedIn, getToken } = useAuth();
+
+  // Server is the source of truth. State starts empty and is hydrated from the
+  // offline cache (fast, may be stale) and then from GET /api/me/bootstrap.
   const [currentUser, setCurrentUser] = useState<Member>(defaultCurrentUser);
-  const [members, setMembers] = useState<Member[]>(defaultMembers);
-  const [groups, setGroups] = useState<Group[]>(defaultGroups);
-  const [expenses, setExpenses] = useState<Expense[]>(defaultExpenses);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
-  const [invitations, setInvitations] = useState<GroupInvitation[]>(defaultInvitations);
-  const [groupMessages, setGroupMessages] = useState<GroupMessage[]>(defaultGroupMessages);
+  const [invitations, setInvitations] = useState<GroupInvitation[]>([]);
+  const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  /**
+   * Reverse-lookup from stable app Member.id + groupId → server memberKey.
+   * Required to build correct API payloads for financially mutating calls.
+   */
+  const [memberKeyMap, setMemberKeyMap] = useState<Record<string, Record<string, string>>>({});
+  /** Server userId of the authenticated user (from the /me bootstrap). */
+  const [serverUserId, setServerUserId] = useState<string | null>(null);
+
+  // Latest state mirror so mutation rollbacks / cache writes read fresh values
+  // without re-subscribing effects to every slice.
+  const stateRef = useRef({ members, groups, expenses, settlements, invitations, recurringExpenses, notifications, groupMessages, memberKeyMap });
+  stateRef.current = { members, groups, expenses, settlements, invitations, recurringExpenses, notifications, groupMessages, memberKeyMap };
+
+  /**
+   * Resolve the server memberKey for a given app-side Member.id within a group.
+   * Falls back to the memberId itself (correct for guest/placeholder members
+   * whose id IS already the memberKey).
+   */
+  const getMemberKeyForGroup = useCallback(
+    (memberId: string, groupId: string): string =>
+      stateRef.current.memberKeyMap[memberId]?.[groupId] ?? memberId,
+    [],
+  );
 
   // Push a notification to the persistent inbox. Uses AsyncStorage directly so it
   // can be called from any mutation without depending on the saveNotifications callback.
@@ -1558,51 +1622,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Lock: prevents background task and foreground check from running concurrently.
   const recurringLockRef = useRef(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const genId = () =>
     Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
+  // Applies a mapped server bootstrap to state and updates the offline cache.
+  const applyBootstrap = useCallback((mapped: Awaited<ReturnType<typeof fetchBootstrap>>) => {
+    setCurrentUser(mapped.currentUser);
+    setMembers(mapped.members);
+    setGroups(mapped.groups);
+    setExpenses(mapped.expenses);
+    setSettlements(mapped.settlements);
+    setInvitations(mapped.invitations);
+    setRecurringExpenses(mapped.recurringExpenses);
+    setNotifications(mapped.notifications);
+    setMemberKeyMap(mapped.memberKeyMap);
+    setServerUserId(mapped.currentUserId);
+    if (mapped.notifPrefs) setNotifPrefs(mapped.notifPrefs);
+    setDefaultCurrencyState(prev => prev || (mapped.defaultCurrency as Currency));
+    // Group messages are not part of the bootstrap payload; they remain managed
+    // by the local MESSAGES_KEY cache, so we don't overwrite them here.
+    AsyncStorage.setItem(SERVER_CACHE_KEY, JSON.stringify({ ...mapped, groupMessages: undefined })).catch(() => {});
+  }, []);
+
   /**
-   * Reload only the recurring-related storage slices (expenses, recurring
-   * schedule, notifications) into React state. Called after
-   * processOverdueRecurring() writes its results to AsyncStorage so that
-   * the in-memory state never diverges from the canonical storage copy.
+   * Refresh authoritative state from GET /api/me/bootstrap. Used after a
+   * successful mutation (refresh-on-success) and on foreground resume.
    */
-  const reloadRecurringSlices = async () => {
+  const refreshFromServer = useCallback(async (): Promise<boolean> => {
     try {
-      const [mainRaw, recurringRaw, notifsRaw] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEY),
-        AsyncStorage.getItem(RECURRING_KEY),
-        AsyncStorage.getItem(NOTIFICATIONS_KEY),
-      ]);
-      if (mainRaw) {
-        const data = JSON.parse(mainRaw);
-        if (data.expenses) setExpenses(data.expenses);
-      }
-      if (recurringRaw) setRecurringExpenses(JSON.parse(recurringRaw));
-      if (notifsRaw) setNotifications(JSON.parse(notifsRaw));
-    } catch {}
-  };
+      const mapped = await fetchBootstrap();
+      applyBootstrap(mapped);
+      return true;
+    } catch {
+      // Offline / transient — keep whatever cached state we already have.
+      return false;
+    }
+  }, [applyBootstrap]);
 
-  const loadData = async () => {
+  // ── Local-only preferences (AsyncStorage cache is fine as source here) ──
+  const loadLocalPrefs = useCallback(async () => {
     try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (data.members) {
-          setMembers(data.members);
-          const me = (data.members as Member[]).find(m => m.isCurrentUser);
-          if (me) setCurrentUser(me);
-        }
-        if (data.groups) setGroups(data.groups);
-        if (data.expenses) setExpenses(data.expenses);
-        if (data.settlements) setSettlements(data.settlements);
-        if (data.invitations !== undefined) setInvitations(data.invitations);
-      }
-
       const simplifyStored = await AsyncStorage.getItem(SIMPLIFY_KEY);
       if (simplifyStored !== null) setSimplifyDebtsEnabled(simplifyStored === "true");
 
@@ -1630,41 +1689,118 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const messagesStored = await AsyncStorage.getItem(MESSAGES_KEY);
       if (messagesStored) {
-        const msgs = JSON.parse(messagesStored);
-        setGroupMessages(msgs.length > 0 ? msgs : defaultGroupMessages);
+        try { setGroupMessages(JSON.parse(messagesStored)); } catch {}
+      }
+    } catch {}
+  }, []);
+
+  /**
+   * Read the cached server snapshot for fast/offline startup. This is a cache
+   * only — the live bootstrap fetch overwrites it when the network is up.
+   */
+  const loadServerCache = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SERVER_CACHE_KEY);
+      if (!raw) return;
+      const mapped = JSON.parse(raw) as Awaited<ReturnType<typeof fetchBootstrap>>;
+      setCurrentUser(mapped.currentUser ?? defaultCurrentUser);
+      setMembers(mapped.members ?? []);
+      setGroups(mapped.groups ?? []);
+      setExpenses(mapped.expenses ?? []);
+      setSettlements(mapped.settlements ?? []);
+      setInvitations(mapped.invitations ?? []);
+      setRecurringExpenses(mapped.recurringExpenses ?? []);
+      setNotifications(mapped.notifications ?? []);
+      if (mapped.memberKeyMap) setMemberKeyMap(mapped.memberKeyMap);
+      if (mapped.currentUserId) setServerUserId(mapped.currentUserId);
+      if (mapped.notifPrefs) setNotifPrefs(mapped.notifPrefs);
+      // Group messages come from the dedicated MESSAGES_KEY cache (loadLocalPrefs).
+    } catch {}
+  }, []);
+
+  /**
+   * One-time migration of the legacy `spliteasy_data_v3` snapshot to the
+   * server via POST /api/imports. Only real user data is migrated — the seeded
+   * demo defaults are never auto-imported.
+   */
+  const migrateLegacySnapshotIfNeeded = useCallback(async (): Promise<void> => {
+    try {
+      const done = await AsyncStorage.getItem(MIGRATION_DONE_KEY);
+      if (done === "true") return;
+
+      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        // Nothing stored locally → nothing to migrate. Mark done so we never
+        // reconsider and never import demo defaults.
+        await AsyncStorage.setItem(MIGRATION_DONE_KEY, "true");
+        return;
       }
 
-      const recurringStored = await AsyncStorage.getItem(RECURRING_KEY);
-      if (recurringStored) {
-        setRecurringExpenses(JSON.parse(recurringStored));
-      } else {
-        // Seed default recurring expenses for demo
-        const seeded = defaultRecurringExpenses;
-        setRecurringExpenses(seeded);
-        try { await AsyncStorage.setItem(RECURRING_KEY, JSON.stringify(seeded)); } catch {}
+      let snapshot: LegacySnapshot;
+      try {
+        snapshot = JSON.parse(raw) as LegacySnapshot;
+      } catch {
+        await AsyncStorage.setItem(MIGRATION_DONE_KEY, "true");
+        return;
       }
 
-      const appNotifsStored = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
-      if (appNotifsStored) setNotifications(JSON.parse(appNotifsStored));
+      if (!isRealUserSnapshot(snapshot)) {
+        // Looks like seeded demo defaults — do not import.
+        await AsyncStorage.setItem(MIGRATION_DONE_KEY, "true");
+        return;
+      }
 
-      // Cold-launch check: process any recurrences that fired while the app
-      // was closed and background fetch was unavailable or not yet scheduled.
-      // We run this after the initial state load so storage is fresh.
-      if (!recurringLockRef.current) {
-        recurringLockRef.current = true;
+      const recurringRaw = await AsyncStorage.getItem(RECURRING_KEY);
+      let recurring: RecurringExpense[] = [];
+      if (recurringRaw) {
         try {
-          const added = await processOverdueRecurring();
-          if (added > 0) await reloadRecurringSlices();
-        } finally {
-          recurringLockRef.current = false;
-        }
+          const parsed = JSON.parse(recurringRaw) as RecurringExpense[];
+          // Exclude the seeded demo recurring ids from migration.
+          recurring = parsed.filter(r => !r.id.startsWith("rec_"));
+        } catch {}
       }
 
+      const currencyStored = (await AsyncStorage.getItem("@spliteasy_defaultCurrency")) || "USD";
+
+      // Stable idempotency key so retries never double-import.
+      let idemKey = await AsyncStorage.getItem(MIGRATION_DONE_KEY + "_key");
+      if (!idemKey) {
+        idemKey = newIdempotencyKey();
+        await AsyncStorage.setItem(MIGRATION_DONE_KEY + "_key", idemKey);
+      }
+
+      await importLocalSnapshot(snapshot, recurring, currencyStored, idemKey, serverUserId ?? undefined);
+      await AsyncStorage.setItem(MIGRATION_DONE_KEY, "true");
     } catch (e) {
-    } finally {
-      setIsLoading(false);
+      // Migration is best-effort; leave the flag unset so it retries next launch.
     }
-  };
+  }, []);
+
+  // Initial local prefs + cached snapshot (fast, offline-safe).
+  useEffect(() => {
+    void loadLocalPrefs();
+    void loadServerCache().finally(() => setIsLoading(false));
+  }, [loadLocalPrefs, loadServerCache]);
+
+  // When authentication becomes available, migrate any legacy local data once,
+  // then hydrate authoritative state from the server.
+  const didBootstrapRef = useRef(false);
+  useEffect(() => {
+    if (!isSignedIn) {
+      didBootstrapRef.current = false;
+      return;
+    }
+    if (didBootstrapRef.current) return;
+    didBootstrapRef.current = true;
+
+    (async () => {
+      // Ensure a token is available before hitting authenticated endpoints.
+      try { await getToken(); } catch {}
+      await migrateLegacySnapshotIfNeeded();
+      await refreshFromServer();
+      setIsLoading(false);
+    })();
+  }, [isSignedIn, getToken, migrateLegacySnapshotIfNeeded, refreshFromServer]);
 
   const fetchExchangeRates = useCallback(async () => {
     try {
@@ -1701,6 +1837,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setDefaultCurrency = useCallback(async (currency: Currency) => {
     setDefaultCurrencyState(currency);
     await AsyncStorage.setItem("@spliteasy_defaultCurrency", currency);
+    // Persist the preference on the server profile (best-effort).
+    api.updateCurrentUser({ defaultCurrency: currency }).catch(() => {});
   }, []);
 
   const toggleSimplifyDebts = useCallback(() => {
@@ -1711,6 +1849,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Writes the current optimistic state to the offline cache (cache only —
+  // the production API remains the source of truth).
   const saveData = useCallback(
     async (
       updatedMembers: Member[],
@@ -1720,19 +1860,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatedInvitations: GroupInvitation[]
     ) => {
       try {
+        const s = stateRef.current;
         await AsyncStorage.setItem(
-          STORAGE_KEY,
+          SERVER_CACHE_KEY,
           JSON.stringify({
+            currentUser,
             members: updatedMembers,
             groups: updatedGroups,
             expenses: updatedExpenses,
             settlements: updatedSettlements,
             invitations: updatedInvitations,
+            recurringExpenses: s.recurringExpenses,
+            notifications: s.notifications,
+            notifPrefs,
+            defaultCurrency,
           })
         );
       } catch (e) {}
     },
-    []
+    [currentUser, notifPrefs, defaultCurrency]
+  );
+
+  /**
+   * Run a mutating server call for an optimistic UI update. On failure we
+   * surface a user-safe toast and re-hydrate authoritative state from the
+   * server (rollback). On success we refresh so server-assigned ids/derived
+   * fields replace the optimistic client values (refresh-on-success).
+   *
+   * All calls are fire-and-forget so the public (synchronous) method
+   * signatures in AppContextType are preserved.
+   */
+  const runServerSync = useCallback(
+    (fn: () => Promise<unknown>, opts?: { errorMessage?: string; silent?: boolean }) => {
+      (async () => {
+        try {
+          await fn();
+          await refreshFromServer();
+        } catch (e) {
+          if (!opts?.silent) {
+            showToast(toUserMessage(e, opts?.errorMessage), "warning");
+          }
+          // Rollback: restore server truth (drops the optimistic change).
+          await refreshFromServer();
+        }
+      })();
+    },
+    [refreshFromServer, showToast]
   );
 
   const saveMessages = useCallback(async (msgs: GroupMessage[]) => {
@@ -1750,8 +1923,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updatedMembers = members.map(m => m.isCurrentUser ? updated : m);
       setMembers(updatedMembers);
       saveData(updatedMembers, groups, expenses, settlements, invitations);
+      runServerSync(() => api.updateCurrentUser({
+        ...(updates.name !== undefined ? { name: updates.name } : {}),
+        ...(updates.email !== undefined ? { email: updates.email } : {}),
+        ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
+        ...(updates.avatarColor !== undefined ? { avatarColor: updates.avatarColor } : {}),
+        ...(updates.photo !== undefined ? { photo: updates.photo } : {}),
+      }), { errorMessage: "Couldn't update your profile." });
     },
-    [currentUser, members, groups, expenses, settlements, invitations, saveData]
+    [currentUser, members, groups, expenses, settlements, invitations, saveData, runServerSync]
   );
 
   const updateMember = useCallback(
@@ -1760,8 +1940,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setMembers(updated);
       if (id === currentUser.id) setCurrentUser(prev => ({ ...prev, ...updates }));
       saveData(updated, groups, expenses, settlements, invitations);
+      // Member profile fields are stored per group-member row on the server;
+      // updating the current user routes through the /me endpoint above.
+      if (id === currentUser.id) {
+        runServerSync(() => api.updateCurrentUser({
+          ...(updates.name !== undefined ? { name: updates.name } : {}),
+          ...(updates.email !== undefined ? { email: updates.email } : {}),
+          ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
+          ...(updates.avatarColor !== undefined ? { avatarColor: updates.avatarColor } : {}),
+          ...(updates.photo !== undefined ? { photo: updates.photo } : {}),
+        }), { errorMessage: "Couldn't update member." });
+      }
     },
-    [currentUser.id, members, groups, expenses, settlements, invitations, saveData]
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData, runServerSync]
   );
 
   const removeMember = useCallback(
@@ -1771,8 +1962,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setMembers(updated);
       saveData(updated, groups, expenses, settlements, invitations);
       if (target) pushNotif({ type: "member_removed", title: "Member removed", body: `${target.name} was removed from the group` });
+      // Remove the member from every group they belong to on the server.
+      const affected = groups.filter(g => (g.memberIds ?? []).includes(id));
+      if (affected.length) {
+        const mkm = stateRef.current.memberKeyMap;
+        runServerSync(async () => {
+          for (const g of affected) {
+            // Resolve the group-scoped memberKey (not the stable app id).
+            const memberKey = getMemberKeyForGroup(id, g.id);
+            await api.removeGroupMember(g.id, memberKey);
+          }
+        }, { errorMessage: "Couldn't remove member." });
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, pushNotif, runServerSync, getMemberKeyForGroup]
   );
 
   const addMember = useCallback(
@@ -1788,6 +1991,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setMembers(updated);
       saveData(updated, groups, expenses, settlements, invitations);
       pushNotif({ type: "member_added", title: "Member added", body: `${member.name} was added to the group` });
+      // A member exists on the server only within a group; the caller adds it to
+      // groups via addGroup/updateGroup which carry member rows. No standalone
+      // server call here (see report: standalone member directory is local).
       return newMember;
     },
     [members, groups, expenses, settlements, invitations, saveData, pushNotif]
@@ -1804,9 +2010,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = [newGroup, ...groups];
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
+      runServerSync(
+        () => api.createGroup(newGroup, members, serverUserId, stateRef.current.memberKeyMap),
+        { errorMessage: "Couldn't create group." },
+      );
       return newGroup;
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, currentUser.id, serverUserId, runServerSync]
   );
 
   const updateGroup = useCallback(
@@ -1816,8 +2026,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
       if (prev) pushNotif({ type: "group_updated", groupId: id, title: "Group updated", body: `"${prev.name}" settings were updated` });
+      runServerSync(() => api.updateGroup(id, updates), { errorMessage: "Couldn't update group." });
     },
-    [members, groups, expenses, settlements, invitations, saveData, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, pushNotif, runServerSync]
   );
 
   const archiveGroup = useCallback(
@@ -1830,8 +2041,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveData(members, updated, expenses, settlements, invitations);
       showToast("Group archived", "info");
       if (prev) pushNotif({ type: "group_archived", groupId: id, title: "Group archived", body: `"${prev.name}" has been archived` });
+      runServerSync(() => api.updateGroup(id, { isArchived: true }), { errorMessage: "Couldn't archive group." });
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif, runServerSync]
   );
 
   const unarchiveGroup = useCallback(
@@ -1842,8 +2054,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
       showToast("Group restored", "success");
+      runServerSync(() => api.updateGroup(id, { isArchived: false }), { errorMessage: "Couldn't restore group." });
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, runServerSync]
   );
 
   const endGroup = useCallback(
@@ -1856,12 +2069,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveData(members, updated, expenses, settlements, invitations);
       showToast("Group period ended", "info");
       if (prev) pushNotif({ type: "group_ended", groupId: id, title: "Group ended", body: `"${prev.name}" period has ended` });
+      runServerSync(() => api.updateGroup(id, { isEnded: true }), { errorMessage: "Couldn't end group." });
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif, runServerSync]
   );
 
   const assignAdmin = useCallback(
     (groupId: string, memberId: string) => {
+      const grp = groups.find(g => g.id === groupId);
       const updated = groups.map(g =>
         g.id === groupId
           ? { ...g, adminIds: [...new Set([...(g.adminIds ?? []), memberId])] }
@@ -1870,12 +2085,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
       showToast("Admin assigned", "success");
+      if (grp) {
+        // Resolve the group-scoped memberKey and PATCH the existing row.
+        const memberKey = getMemberKeyForGroup(memberId, groupId);
+        runServerSync(
+          () => api.updateGroupMember(groupId, memberKey, true),
+          { errorMessage: "Couldn't assign admin." },
+        );
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, runServerSync, getMemberKeyForGroup]
   );
 
   const removeAdmin = useCallback(
     (groupId: string, memberId: string) => {
+      const grp = groups.find(g => g.id === groupId);
       const updated = groups.map(g =>
         g.id === groupId
           ? { ...g, adminIds: (g.adminIds ?? []).filter(id => id !== memberId) }
@@ -1883,8 +2107,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
       setGroups(updated);
       saveData(members, updated, expenses, settlements, invitations);
+      if (grp) {
+        // Resolve the group-scoped memberKey and PATCH the existing row.
+        const memberKey = getMemberKeyForGroup(memberId, groupId);
+        runServerSync(
+          () => api.updateGroupMember(groupId, memberKey, false),
+          { errorMessage: "Couldn't update admin." },
+        );
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, runServerSync, getMemberKeyForGroup]
   );
 
   const deleteGroup = useCallback(
@@ -1898,8 +2130,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSettlements(updatedSettlements);
       setInvitations(updatedInvitations);
       saveData(members, updatedGroups, updatedExpenses, updatedSettlements, updatedInvitations);
+      runServerSync(() => api.deleteGroup(id), { errorMessage: "Couldn't delete group." });
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, runServerSync]
   );
 
   const addCustomCategory = useCallback((name: string) => {
@@ -1917,6 +2150,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNotifPrefs(prev => {
       const next = { ...prev, [key]: value };
       AsyncStorage.setItem(NOTIF_KEY, JSON.stringify(next));
+      // Persist notification preferences on the server profile (best-effort).
+      api.updateCurrentUser({ notifPrefs: next as unknown as Record<string, unknown> }).catch(() => {});
       return next;
     });
   }, []);
@@ -1952,8 +2187,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         title: "Expense added",
         body: `"${expense.description}" (${expense.amount.toFixed(2)} ${expense.currency}) was added${grp ? ` to ${grp.name}` : ""}`,
       });
+      runServerSync(
+        () => api.createExpense(expense.groupId, expense, stateRef.current.memberKeyMap),
+        { errorMessage: "Couldn't add expense." },
+      );
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id, pushNotif, runServerSync]
   );
 
   const updateExpense = useCallback(
@@ -2035,8 +2274,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: `"${prev.description}" was edited${grp ? ` in ${grp.name}` : ""}`,
         });
       }
+      // Reactions are a device-local nicety and not persisted server-side; only
+      // sync structural edits (comments handled by addExpenseComment).
+      if (isRealEdit && prev) {
+        const expGroupId = prev.groupId;
+        runServerSync(
+          () => api.updateExpense(id, expGroupId, updates, stateRef.current.memberKeyMap),
+          { errorMessage: "Couldn't update expense." },
+        );
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, currentUser.id, pushNotif, runServerSync]
   );
 
   const deleteExpense = useCallback(
@@ -2045,8 +2293,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = expenses.filter(e => e.id !== id);
       setExpenses(updated);
       saveData(members, groups, updated, settlements, invitations);
+      let undone = false;
       if (notifPrefs.expenseDeleted && target) {
-        showToast(`"${target.description}" deleted`, "warning");
+        showToast(`"${target.description}" removed for everyone`, "warning", {
+          label: "Undo",
+          onPress: () => {
+            undone = true;
+            setExpenses(prev => {
+              if (prev.some(e => e.id === target.id)) return prev;
+              const restored = [target, ...prev].sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+              saveData(members, groups, restored, settlements, invitations);
+              return restored;
+            });
+            // Re-create on the server (server assigns a fresh id; refresh reconciles).
+            const { id: _omit, createdAt: _omit2, ...rest } = target;
+            runServerSync(() => api.createExpense(target.groupId, rest, stateRef.current.memberKeyMap), { errorMessage: "Couldn't restore expense." });
+          },
+        });
       }
       if (target) {
         const grp = groups.find(g => g.id === target.groupId);
@@ -2057,8 +2322,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: `"${target.description}" (${target.amount.toFixed(2)} ${target.currency}) was removed${grp ? ` from ${grp.name}` : ""}`,
         });
       }
+      // Delete on the server after a short delay so an Undo tap can cancel it.
+      setTimeout(() => {
+        if (undone) return;
+        runServerSync(() => api.deleteExpense(id), { errorMessage: "Couldn't delete expense." });
+      }, 4000);
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif, runServerSync]
   );
 
   const addExpenseComment = useCallback(
@@ -2092,8 +2362,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: `A comment was added to "${expense.description}"${grp ? ` in ${grp.name}` : ""}`,
         });
       }
+      if (expense) {
+        const expGroupId = expense.groupId;
+        runServerSync(
+          () => api.addExpenseComment(expenseId, currentUser.id, expGroupId, trimmed, stateRef.current.memberKeyMap),
+          { errorMessage: "Couldn't add comment." },
+        );
+      }
     },
-    [currentUser.id, members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
+    [currentUser.id, members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif, runServerSync]
   );
 
   const toggleReaction = useCallback(
@@ -2144,8 +2421,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         title: "Payment recorded",
         body: `${settlement.amount.toFixed(2)} ${settlement.currency} paid${toMember ? ` to ${toMember.name}` : ""}${grp ? ` in ${grp.name}` : ""}`,
       });
+      runServerSync(
+        () => api.createSettlement(settlement.groupId, settlement, stateRef.current.memberKeyMap),
+        { errorMessage: "Couldn't record settlement." },
+      );
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif, runServerSync]
   );
 
   const addSettlements = useCallback(
@@ -2175,8 +2456,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: `${batch.length > 1 ? `${batch.length} settlements` : `${batch[0].amount.toFixed(2)} ${batch[0].currency} settlement`} recorded${grp ? ` in ${grp.name}` : ""}`,
         });
       });
+      runServerSync(async () => {
+        const mkm = stateRef.current.memberKeyMap;
+        for (const s of newSettlements) await api.createSettlement(s.groupId, s, mkm);
+      }, { errorMessage: "Couldn't record settlements." });
     },
-    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, notifPrefs, showToast, pushNotif, runServerSync]
   );
 
   const deleteSettlement = useCallback(
@@ -2185,8 +2470,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = settlements.filter(s => s.id !== id);
       setSettlements(updated);
       saveData(members, groups, expenses, updated, invitations);
+      let undone = false;
       if (target) {
-        showToast("Settlement removed", "warning");
+        showToast("Payment removed — balance restored", "warning", {
+          label: "Undo",
+          onPress: () => {
+            undone = true;
+            setSettlements(prev => {
+              if (prev.some(s => s.id === target.id)) return prev;
+              const restored = [target, ...prev].sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+              saveData(members, groups, expenses, restored, invitations);
+              return restored;
+            });
+            const { id: _o1, createdAt: _o2, ...rest } = target;
+            runServerSync(() => api.createSettlement(target.groupId, rest, stateRef.current.memberKeyMap), { errorMessage: "Couldn't restore settlement." });
+          },
+        });
         const grp = groups.find(g => g.id === target.groupId);
         pushNotif({
           type: "settlement_deleted",
@@ -2195,8 +2496,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: `A ${target.amount.toFixed(2)} ${target.currency} settlement was removed${grp ? ` from ${grp.name}` : ""}`,
         });
       }
+      setTimeout(() => {
+        if (undone) return;
+        runServerSync(() => api.deleteSettlement(id), { errorMessage: "Couldn't delete settlement." });
+      }, 4000);
     },
-    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif]
+    [members, groups, expenses, settlements, invitations, saveData, showToast, pushNotif, runServerSync]
   );
 
   const sendGroupInvite = useCallback(
@@ -2216,7 +2521,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         groupEmoji: group.emoji,
         groupCurrency: group.currency,
         groupType: group.type,
-        inviterUserId: CURRENT_USER_ID,
+        inviterUserId: currentUser.id,
         inviterName: "You",
         inviterAvatarColor: currentUser.avatarColor,
         invitedEmail: email,
@@ -2228,9 +2533,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = [...invitations, newInvite];
       setInvitations(updated);
       saveData(members, groups, expenses, settlements, updated);
+      runServerSync(
+        () => api.createGroupInvitation(groupId, email, name || email.split("@")[0]),
+        { errorMessage: "Couldn't send invite." },
+      );
       return newInvite;
     },
-    [members, groups, expenses, settlements, invitations, currentUser, saveData]
+    [members, groups, expenses, settlements, invitations, currentUser, saveData, runServerSync]
   );
 
   const acceptInvitation = useCallback(
@@ -2244,7 +2553,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         emoji: invite.groupEmoji,
         currency: invite.groupCurrency,
         type: invite.groupType,
-        memberIds: [invite.inviterUserId, CURRENT_USER_ID],
+        memberIds: [invite.inviterUserId, currentUser.id],
         createdAt: invite.createdAt,
       };
 
@@ -2256,30 +2565,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setGroups(updatedGroups);
       setInvitations(updatedInvitations);
       saveData(members, updatedGroups, expenses, settlements, updatedInvitations);
+      // Accept on the server via the invitation token, then reconcile.
+      if (invite.token) {
+        runServerSync(() => api.acceptInvitation(invite.token as string), { errorMessage: "Couldn't accept invite." });
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, currentUser.id, runServerSync]
   );
 
   const declineInvitation = useCallback(
     (invitationId: string) => {
+      const invite = invitations.find(i => i.id === invitationId);
       const updatedInvitations = invitations.filter(i => i.id !== invitationId);
       setInvitations(updatedInvitations);
       saveData(members, groups, expenses, settlements, updatedInvitations);
+      if (invite?.token) {
+        runServerSync(() => api.declineInvitation(invite.token as string), { errorMessage: "Couldn't decline invite." });
+      }
     },
-    [members, groups, expenses, settlements, invitations, saveData]
+    [members, groups, expenses, settlements, invitations, saveData, runServerSync]
   );
 
   const getPendingInvitesForCurrentUser = useCallback(
-    () => invitations.filter(i => i.invitedMemberId === CURRENT_USER_ID && i.status === "pending"),
-    [invitations]
+    () => invitations.filter(
+      i =>
+        (i.invitedMemberId === currentUser.id ||
+          (currentUser.email && i.invitedEmail.toLowerCase() === currentUser.email.toLowerCase())) &&
+        i.status === "pending"
+    ),
+    [invitations, currentUser.id, currentUser.email]
   );
 
   const getGroupPendingInvites = useCallback(
     (groupId: string) =>
       invitations.filter(
-        i => i.groupId === groupId && i.inviterUserId === CURRENT_USER_ID && i.status === "pending"
+        i => i.groupId === groupId && i.inviterUserId === currentUser.id && i.status === "pending"
       ),
-    [invitations]
+    [invitations, currentUser.id]
   );
 
   const getGroupBalances = useCallback(
@@ -2335,13 +2657,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const debts = getGroupBalances(group.id);
       for (const debt of debts) {
         const converted = convertCurrency(debt.amount, group.currency);
-        if (debt.fromId === CURRENT_USER_ID) youOwe += converted;
-        if (debt.toId === CURRENT_USER_ID) youAreOwed += converted;
+        if (debt.fromId === currentUser.id) youOwe += converted;
+        if (debt.toId === currentUser.id) youAreOwed += converted;
       }
     }
 
     return { youOwe, youAreOwed, currency: defaultCurrency };
-  }, [groups, getGroupBalances, convertCurrency, defaultCurrency]);
+  }, [groups, getGroupBalances, convertCurrency, defaultCurrency, currentUser.id]);
 
   const getMemberById = useCallback(
     (id: string) => members.find(m => m.id === id),
@@ -2381,9 +2703,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = [...groupMessages, msg];
       setGroupMessages(updated);
       saveMessages(updated);
+      runServerSync(
+        () => api.createGroupMessage(groupId, currentUser.id, msg.text, stateRef.current.memberKeyMap),
+        { errorMessage: "Couldn't send message.", silent: true },
+      );
       return msg;
     },
-    [currentUser.id, groupMessages, saveMessages]
+    [currentUser.id, groupMessages, saveMessages, runServerSync]
   );
 
   const getGroupMessages = useCallback(
@@ -2405,9 +2731,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         title: "Recurring schedule created",
         body: `"${r.description}" will repeat ${r.frequency}${grp ? ` in ${grp.name}` : ""}`,
       });
+      runServerSync(
+        () => api.createRecurring(r.groupId, r, stateRef.current.memberKeyMap),
+        { errorMessage: "Couldn't create recurring schedule." },
+      );
       return newR;
     },
-    [recurringExpenses, saveRecurring, showToast, groups, pushNotif]
+    [recurringExpenses, saveRecurring, showToast, groups, pushNotif, runServerSync]
   );
 
   const updateRecurringExpense = useCallback(
@@ -2425,8 +2755,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: `"${target.description}" schedule was updated${grp ? ` in ${grp.name}` : ""}`,
         });
       }
+      if (target) {
+        const recurGroupId = target.groupId;
+        runServerSync(
+          () => api.updateRecurring(id, recurGroupId, updates, stateRef.current.memberKeyMap),
+          { errorMessage: "Couldn't update recurring schedule." },
+        );
+      }
     },
-    [recurringExpenses, saveRecurring, groups, pushNotif]
+    [recurringExpenses, saveRecurring, groups, pushNotif, runServerSync]
   );
 
   const deleteRecurringExpense = useCallback(
@@ -2435,7 +2772,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const updated = recurringExpenses.filter(r => r.id !== id);
       setRecurringExpenses(updated);
       saveRecurring(updated);
+      let undone = false;
       if (target) {
+        showToast(`"${target.description}" schedule deleted`, "warning", {
+          label: "Undo",
+          onPress: () => {
+            undone = true;
+            setRecurringExpenses(prev => {
+              if (prev.some(r => r.id === target.id)) return prev;
+              const restored = [...prev, target];
+              saveRecurring(restored);
+              return restored;
+            });
+            const { id: _o1, createdAt: _o2, ...rest } = target;
+            runServerSync(() => api.createRecurring(target.groupId, rest, stateRef.current.memberKeyMap), { errorMessage: "Couldn't restore recurring schedule." });
+          },
+        });
         const grp = groups.find(g => g.id === target.groupId);
         pushNotif({
           type: "recurring_deleted",
@@ -2444,8 +2796,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: `"${target.description}" recurring schedule was deleted${grp ? ` from ${grp.name}` : ""}`,
         });
       }
+      setTimeout(() => {
+        if (undone) return;
+        runServerSync(() => api.deleteRecurring(id), { errorMessage: "Couldn't delete recurring schedule." });
+      }, 4000);
     },
-    [recurringExpenses, saveRecurring, groups, pushNotif]
+    [recurringExpenses, saveRecurring, groups, pushNotif, showToast, runServerSync]
   );
 
   const saveNotifications = useCallback(async (notifs: AppNotification[]) => {
@@ -2454,11 +2810,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const markAllNotificationsRead = useCallback(() => {
     setNotifications(prev => {
+      const previouslyUnread = prev.filter(n => !n.read).map(n => n.id);
+      if (previouslyUnread.length === 0) return prev;
       const updated = prev.map(n => ({ ...n, read: true }));
       saveNotifications(updated);
+      // Persist read state server-side (fire-and-forget; no refresh so the
+      // optimistic read state and Undo window are preserved).
+      api.markAllNotificationsRead().catch(() => {});
+      showToast(
+        `${previouslyUnread.length} notification${previouslyUnread.length === 1 ? "" : "s"} marked read`,
+        "info",
+        {
+          label: "Undo",
+          onPress: () => {
+            const unreadSet = new Set(previouslyUnread);
+            setNotifications(cur => {
+              const reverted = cur.map(n => (unreadSet.has(n.id) ? { ...n, read: false } : n));
+              saveNotifications(reverted);
+              return reverted;
+            });
+          },
+        }
+      );
       return updated;
     });
-  }, [saveNotifications]);
+  }, [saveNotifications, showToast]);
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications(prev => {
@@ -2466,6 +2842,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveNotifications(updated);
       return updated;
     });
+    // No dedicated dismiss endpoint; treat dismissal as "read" on the server.
+    api.markNotificationRead(id).catch(() => {});
   }, [saveNotifications]);
 
   const unreadNotificationCount = notifications.filter(n => !n.read).length;
@@ -2503,7 +2881,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         splits: r.splits,
         category: r.category,
         createdAt: now.toISOString(),
-        addedBy: CURRENT_USER_ID,
+        addedBy: currentUser.id,
       };
       updatedExpenses = [newExpense, ...updatedExpenses];
 
@@ -2545,10 +2923,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveData(members, groups, updatedExpenses, settlements, invitations);
       saveRecurring(updatedRecurring);
       showToast(`${added} recurring expense${added > 1 ? "s" : ""} added`, "success");
+      // Server authoritatively creates due recurring expenses and advances the
+      // schedules; refresh reconciles our optimistic local computation.
+      runServerSync(() => api.runRecurring(), { silent: true });
     }
 
     return added;
-  }, [recurringExpenses, expenses, members, groups, settlements, invitations, saveData, saveRecurring, showToast]);
+  }, [recurringExpenses, expenses, members, groups, settlements, invitations, saveData, saveRecurring, showToast, runServerSync, currentUser.id]);
 
   const checkAndSendGroupReminders = useCallback(() => {
     const now = new Date();
@@ -2612,13 +2993,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [groups, members, expenses, settlements, invitations, getGroupBalances, saveData, saveNotifications, showToast]);
 
-  // ── Foreground-resume: storage-based recurring check ───────────────────
-  // Runs processOverdueRecurring() (AsyncStorage, no React state) so that
-  // results from a prior background-task write are never re-processed by the
-  // stale in-memory checkAndAddRecurring(). A lock prevents concurrent runs
-  // between background task and foreground resume.
+  // ── Foreground-resume: re-hydrate authoritative state from the server ──
+  // On resume we re-fetch the bootstrap so any changes made elsewhere (or
+  // server-side recurring runs) are reflected. A lock prevents concurrent runs.
   const showToastRef = useRef(showToast);
   useEffect(() => { showToastRef.current = showToast; }, [showToast]);
+
+  const refreshFromServerRef = useRef(refreshFromServer);
+  useEffect(() => { refreshFromServerRef.current = refreshFromServer; }, [refreshFromServer]);
 
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
@@ -2629,14 +3011,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (recurringLockRef.current) return;
         recurringLockRef.current = true;
         try {
-          const added = await processOverdueRecurring();
-          if (added > 0) {
-            await reloadRecurringSlices();
-            showToastRef.current(
-              `${added} recurring expense${added > 1 ? "s" : ""} added`,
-              "success"
-            );
-          }
+          await refreshFromServerRef.current();
         } finally {
           recurringLockRef.current = false;
         }
