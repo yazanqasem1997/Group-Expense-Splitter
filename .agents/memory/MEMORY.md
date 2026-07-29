@@ -2,3 +2,6 @@
 - [Theme toggle pattern](theme-toggle.md) — useColorScheme() alone can't be overridden in-app; requires ThemeContext with AsyncStorage persistence wrapping the whole tree.
 - [AppAlert layering fix](appalert-modal.md) — AppAlert must use RN Modal (not absolute View) to render above other Modals; zIndex/elevation on Views cannot beat native Modal layer.
 - [Group feed architecture](group-feed.md) — group/[id].tsx uses a FeedItem union type combining Expense + Settlement, sorted by createdAt; audit log (AuditEntry[]) lives on each Expense.
+- [expo-file-system v57 API](expo-fs-v57.md) — v57 dropped legacy top-level exports; import from `expo-file-system/legacy` for cacheDirectory + writeAsStringAsync.
+- [Currency type expansion](currency-type.md) — Currency is now `string` (not a union); CURRENCY_LIST exports ~155 CurrencyInfo objects; CURRENCY_SYMBOLS derived from it.
+- [Scroll-to-top tab fix](scroll-to-top-tab.md) — Classic layout: use `listeners={({ navigation }) => ({ tabPress: () => { if (navigation.isFocused()) ... } })}`. Native layout: check `usePathname()` segment vs TAB_PATHS map. Remove useScrollToTop from all tab screens.

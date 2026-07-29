@@ -443,9 +443,22 @@ export default function NewExpenseScreen() {
         {/* Recurring toggle — only when creating, not editing */}
         {!isEditing && (
           <View style={styles.recurringSection}>
-            <View style={[styles.recurringRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Feather name="repeat" size={16} color={isRecurring ? colors.primary : colors.textSecondary} />
-              <Text style={[styles.recurringLabel, { color: colors.text }]}>Repeat this expense</Text>
+            <View style={[styles.recurringRow, {
+              backgroundColor: isRecurring ? colors.primaryLight : colors.surface,
+              borderColor: isRecurring ? colors.primary : colors.primary + "50",
+              borderWidth: 1.5,
+            }]}>
+              <View style={[styles.recurringIconWrap, { backgroundColor: isRecurring ? colors.primary : colors.primaryLight }]}>
+                <Feather name="repeat" size={15} color={isRecurring ? "#fff" : colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.recurringLabel, { color: isRecurring ? colors.primary : colors.text }]}>
+                  Repeat this expense
+                </Text>
+                <Text style={[styles.recurringSubHint, { color: isRecurring ? colors.primary + "aa" : colors.textTertiary }]}>
+                  {isRecurring ? `${RECURRING_FREQUENCY_LABELS[recurringFrequency]} schedule` : "Create a recurring payment"}
+                </Text>
+              </View>
               <Switch
                 value={isRecurring}
                 onValueChange={v => {
@@ -1031,13 +1044,18 @@ const styles = StyleSheet.create({
   recurringRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
-  recurringLabel: { fontSize: 15, fontFamily: "Inter_500Medium" },
+  recurringIconWrap: {
+    width: 32, height: 32, borderRadius: 10,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  recurringLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  recurringSubHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
   freqRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   freqChip: {
     paddingHorizontal: 14,

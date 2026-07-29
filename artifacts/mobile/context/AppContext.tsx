@@ -4,31 +4,181 @@ import { AppState, AppStateStatus } from "react-native";
 import { useToast } from "@/context/ToastContext";
 import { processOverdueRecurring } from "@/services/backgroundRecurring";
 
-export type Currency =
-  | "USD" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR" | "AED"
-  | "CHF" | "SEK" | "NOK" | "DKK" | "NZD" | "SGD" | "HKD" | "MXN"
-  | "BRL" | "CNY" | "ZAR" | "TRY" | "KRW" | "THB" | "IDR" | "MYR"
-  | "PHP" | "SAR" | "QAR" | "KWD" | "ILS" | "EGP" | "NGN" | "KES"
-  | "MAD" | "COP" | "CLP" | "ARS" | "PEN" | "PKR" | "BDT" | "TWD"
-  | "HUF" | "PLN" | "CZK" | "RON" | "BGN" | "HRK" | "RUB" | "UAH"
-  | "VND" | "MMK" | "LKR" | "GHS" | "XOF" | "XAF" | "OMR" | "BHD";
+/** All ISO 4217 currencies are valid — the type is kept broad for extensibility. */
+export type Currency = string;
 
-export const CURRENCY_SYMBOLS: Record<Currency, string> = {
-  USD: "$",     EUR: "€",     GBP: "£",     CAD: "CA$",   AUD: "A$",
-  JPY: "¥",     INR: "₹",     AED: "AED ",  CHF: "CHF ",  SEK: "kr ",
-  NOK: "kr ",   DKK: "kr ",   NZD: "NZ$",   SGD: "S$",    HKD: "HK$",
-  MXN: "MX$",   BRL: "R$",    CNY: "¥",     ZAR: "R ",    TRY: "₺",
-  KRW: "₩",     THB: "฿",     IDR: "Rp ",   MYR: "RM ",   PHP: "₱",
-  SAR: "SAR ",  QAR: "QAR ",  KWD: "KD ",   ILS: "₪",     EGP: "E£",
-  NGN: "₦",     KES: "KSh ",  MAD: "MAD ",  COP: "COP$",  CLP: "CLP$",
-  ARS: "ARS$",  PEN: "S/.",   PKR: "₨",     BDT: "৳",     TWD: "NT$",
-  HUF: "Ft ",   PLN: "zł ",   CZK: "Kč ",   RON: "lei ",  BGN: "лв ",
-  HRK: "kn ",   RUB: "₽",     UAH: "₴",     VND: "₫",     MMK: "K ",
-  LKR: "Rs ",   GHS: "GH₵",   XOF: "CFA ",  XAF: "CFA ",  OMR: "OMR ", BHD: "BD ",
-};
+export interface CurrencyInfo {
+  code: string;
+  label: string;
+  flag: string;
+  symbol: string;
+}
 
-export function formatAmount(amount: number, currency: Currency): string {
-  const symbol = CURRENCY_SYMBOLS[currency] ?? currency + " ";
+/** Complete list of world currencies — use this for all pickers. */
+export const CURRENCY_LIST: CurrencyInfo[] = [
+  { code: "AED", label: "UAE Dirham",                      flag: "🇦🇪", symbol: "AED " },
+  { code: "AFN", label: "Afghan Afghani",                  flag: "🇦🇫", symbol: "؋ "   },
+  { code: "ALL", label: "Albanian Lek",                    flag: "🇦🇱", symbol: "L "   },
+  { code: "AMD", label: "Armenian Dram",                   flag: "🇦🇲", symbol: "֏ "   },
+  { code: "ANG", label: "Antillean Guilder",               flag: "🇳🇱", symbol: "ƒ "   },
+  { code: "AOA", label: "Angolan Kwanza",                  flag: "🇦🇴", symbol: "Kz "  },
+  { code: "ARS", label: "Argentine Peso",                  flag: "🇦🇷", symbol: "ARS$" },
+  { code: "AUD", label: "Australian Dollar",               flag: "🇦🇺", symbol: "A$"   },
+  { code: "AWG", label: "Aruban Florin",                   flag: "🇦🇼", symbol: "ƒ "   },
+  { code: "AZN", label: "Azerbaijani Manat",               flag: "🇦🇿", symbol: "₼"    },
+  { code: "BAM", label: "Bosnia-Herzegovina Mark",         flag: "🇧🇦", symbol: "KM "  },
+  { code: "BBD", label: "Barbadian Dollar",                flag: "🇧🇧", symbol: "Bds$" },
+  { code: "BDT", label: "Bangladeshi Taka",                flag: "🇧🇩", symbol: "৳"    },
+  { code: "BGN", label: "Bulgarian Lev",                   flag: "🇧🇬", symbol: "лв "  },
+  { code: "BHD", label: "Bahraini Dinar",                  flag: "🇧🇭", symbol: "BD "  },
+  { code: "BIF", label: "Burundian Franc",                 flag: "🇧🇮", symbol: "Fr "  },
+  { code: "BMD", label: "Bermudian Dollar",                flag: "🇧🇲", symbol: "BD$"  },
+  { code: "BND", label: "Brunei Dollar",                   flag: "🇧🇳", symbol: "B$"   },
+  { code: "BOB", label: "Bolivian Boliviano",              flag: "🇧🇴", symbol: "Bs."  },
+  { code: "BRL", label: "Brazilian Real",                  flag: "🇧🇷", symbol: "R$"   },
+  { code: "BSD", label: "Bahamian Dollar",                 flag: "🇧🇸", symbol: "B$"   },
+  { code: "BTN", label: "Bhutanese Ngultrum",              flag: "🇧🇹", symbol: "Nu."  },
+  { code: "BWP", label: "Botswanan Pula",                  flag: "🇧🇼", symbol: "P "   },
+  { code: "BYN", label: "Belarusian Ruble",                flag: "🇧🇾", symbol: "Br "  },
+  { code: "BZD", label: "Belizean Dollar",                 flag: "🇧🇿", symbol: "BZ$"  },
+  { code: "CAD", label: "Canadian Dollar",                 flag: "🇨🇦", symbol: "CA$"  },
+  { code: "CDF", label: "Congolese Franc",                 flag: "🇨🇩", symbol: "Fr "  },
+  { code: "CHF", label: "Swiss Franc",                     flag: "🇨🇭", symbol: "CHF " },
+  { code: "CLP", label: "Chilean Peso",                    flag: "🇨🇱", symbol: "CLP$" },
+  { code: "CNY", label: "Chinese Yuan",                    flag: "🇨🇳", symbol: "¥"    },
+  { code: "COP", label: "Colombian Peso",                  flag: "🇨🇴", symbol: "COP$" },
+  { code: "CRC", label: "Costa Rican Colón",               flag: "🇨🇷", symbol: "₡"    },
+  { code: "CUP", label: "Cuban Peso",                      flag: "🇨🇺", symbol: "$MN " },
+  { code: "CVE", label: "Cape Verdean Escudo",             flag: "🇨🇻", symbol: "Esc " },
+  { code: "CZK", label: "Czech Koruna",                    flag: "🇨🇿", symbol: "Kč "  },
+  { code: "DJF", label: "Djiboutian Franc",                flag: "🇩🇯", symbol: "Fr "  },
+  { code: "DKK", label: "Danish Krone",                    flag: "🇩🇰", symbol: "kr "  },
+  { code: "DOP", label: "Dominican Peso",                  flag: "🇩🇴", symbol: "RD$"  },
+  { code: "DZD", label: "Algerian Dinar",                  flag: "🇩🇿", symbol: "دج "  },
+  { code: "EGP", label: "Egyptian Pound",                  flag: "🇪🇬", symbol: "E£"   },
+  { code: "ERN", label: "Eritrean Nakfa",                  flag: "🇪🇷", symbol: "Nfk " },
+  { code: "ETB", label: "Ethiopian Birr",                  flag: "🇪🇹", symbol: "Br "  },
+  { code: "EUR", label: "Euro",                            flag: "🇪🇺", symbol: "€"    },
+  { code: "FJD", label: "Fijian Dollar",                   flag: "🇫🇯", symbol: "FJ$"  },
+  { code: "FKP", label: "Falkland Islands Pound",          flag: "🇫🇰", symbol: "FK£"  },
+  { code: "GBP", label: "British Pound",                   flag: "🇬🇧", symbol: "£"    },
+  { code: "GEL", label: "Georgian Lari",                   flag: "🇬🇪", symbol: "₾"    },
+  { code: "GHS", label: "Ghanaian Cedi",                   flag: "🇬🇭", symbol: "GH₵"  },
+  { code: "GIP", label: "Gibraltar Pound",                 flag: "🇬🇮", symbol: "£"    },
+  { code: "GMD", label: "Gambian Dalasi",                  flag: "🇬🇲", symbol: "D "   },
+  { code: "GNF", label: "Guinean Franc",                   flag: "🇬🇳", symbol: "Fr "  },
+  { code: "GTQ", label: "Guatemalan Quetzal",              flag: "🇬🇹", symbol: "Q "   },
+  { code: "GYD", label: "Guyanese Dollar",                 flag: "🇬🇾", symbol: "GY$"  },
+  { code: "HKD", label: "Hong Kong Dollar",                flag: "🇭🇰", symbol: "HK$"  },
+  { code: "HNL", label: "Honduran Lempira",                flag: "🇭🇳", symbol: "L "   },
+  { code: "HRK", label: "Croatian Kuna",                   flag: "🇭🇷", symbol: "kn "  },
+  { code: "HTG", label: "Haitian Gourde",                  flag: "🇭🇹", symbol: "G "   },
+  { code: "HUF", label: "Hungarian Forint",                flag: "🇭🇺", symbol: "Ft "  },
+  { code: "IDR", label: "Indonesian Rupiah",               flag: "🇮🇩", symbol: "Rp "  },
+  { code: "ILS", label: "Israeli Shekel",                  flag: "🇮🇱", symbol: "₪"    },
+  { code: "INR", label: "Indian Rupee",                    flag: "🇮🇳", symbol: "₹"    },
+  { code: "IQD", label: "Iraqi Dinar",                     flag: "🇮🇶", symbol: "ع.د " },
+  { code: "IRR", label: "Iranian Rial",                    flag: "🇮🇷", symbol: "﷼"    },
+  { code: "ISK", label: "Icelandic Króna",                 flag: "🇮🇸", symbol: "kr "  },
+  { code: "JMD", label: "Jamaican Dollar",                 flag: "🇯🇲", symbol: "J$"   },
+  { code: "JOD", label: "Jordanian Dinar",                 flag: "🇯🇴", symbol: "JD "  },
+  { code: "JPY", label: "Japanese Yen",                    flag: "🇯🇵", symbol: "¥"    },
+  { code: "KES", label: "Kenyan Shilling",                 flag: "🇰🇪", symbol: "KSh " },
+  { code: "KGS", label: "Kyrgyzstani Som",                 flag: "🇰🇬", symbol: "с "   },
+  { code: "KHR", label: "Cambodian Riel",                  flag: "🇰🇭", symbol: "៛"    },
+  { code: "KMF", label: "Comorian Franc",                  flag: "🇰🇲", symbol: "Fr "  },
+  { code: "KRW", label: "South Korean Won",                flag: "🇰🇷", symbol: "₩"    },
+  { code: "KWD", label: "Kuwaiti Dinar",                   flag: "🇰🇼", symbol: "KD "  },
+  { code: "KYD", label: "Cayman Islands Dollar",           flag: "🇰🇾", symbol: "CI$"  },
+  { code: "KZT", label: "Kazakhstani Tenge",               flag: "🇰🇿", symbol: "₸"    },
+  { code: "LAK", label: "Laotian Kip",                     flag: "🇱🇦", symbol: "₭"    },
+  { code: "LBP", label: "Lebanese Pound",                  flag: "🇱🇧", symbol: "ل.ل " },
+  { code: "LKR", label: "Sri Lankan Rupee",                flag: "🇱🇰", symbol: "Rs "  },
+  { code: "LRD", label: "Liberian Dollar",                 flag: "🇱🇷", symbol: "L$"   },
+  { code: "LSL", label: "Lesotho Loti",                    flag: "🇱🇸", symbol: "M "   },
+  { code: "LYD", label: "Libyan Dinar",                    flag: "🇱🇾", symbol: "LD "  },
+  { code: "MAD", label: "Moroccan Dirham",                 flag: "🇲🇦", symbol: "MAD " },
+  { code: "MDL", label: "Moldovan Leu",                    flag: "🇲🇩", symbol: "L "   },
+  { code: "MGA", label: "Malagasy Ariary",                 flag: "🇲🇬", symbol: "Ar "  },
+  { code: "MKD", label: "Macedonian Denar",                flag: "🇲🇰", symbol: "ден " },
+  { code: "MMK", label: "Myanmar Kyat",                    flag: "🇲🇲", symbol: "K "   },
+  { code: "MNT", label: "Mongolian Tugrik",                flag: "🇲🇳", symbol: "₮"    },
+  { code: "MOP", label: "Macanese Pataca",                 flag: "🇲🇴", symbol: "P "   },
+  { code: "MRU", label: "Mauritanian Ouguiya",             flag: "🇲🇷", symbol: "UM "  },
+  { code: "MUR", label: "Mauritian Rupee",                 flag: "🇲🇺", symbol: "Rs "  },
+  { code: "MVR", label: "Maldivian Rufiyaa",               flag: "🇲🇻", symbol: "Rf "  },
+  { code: "MWK", label: "Malawian Kwacha",                 flag: "🇲🇼", symbol: "MK "  },
+  { code: "MXN", label: "Mexican Peso",                    flag: "🇲🇽", symbol: "MX$"  },
+  { code: "MYR", label: "Malaysian Ringgit",               flag: "🇲🇾", symbol: "RM "  },
+  { code: "MZN", label: "Mozambican Metical",              flag: "🇲🇿", symbol: "MT "  },
+  { code: "NAD", label: "Namibian Dollar",                 flag: "🇳🇦", symbol: "N$"   },
+  { code: "NGN", label: "Nigerian Naira",                  flag: "🇳🇬", symbol: "₦"    },
+  { code: "NIO", label: "Nicaraguan Córdoba",              flag: "🇳🇮", symbol: "C$"   },
+  { code: "NOK", label: "Norwegian Krone",                 flag: "🇳🇴", symbol: "kr "  },
+  { code: "NPR", label: "Nepali Rupee",                    flag: "🇳🇵", symbol: "Rs "  },
+  { code: "NZD", label: "New Zealand Dollar",              flag: "🇳🇿", symbol: "NZ$"  },
+  { code: "OMR", label: "Omani Rial",                      flag: "🇴🇲", symbol: "OMR " },
+  { code: "PAB", label: "Panamanian Balboa",               flag: "🇵🇦", symbol: "B/."  },
+  { code: "PEN", label: "Peruvian Sol",                    flag: "🇵🇪", symbol: "S/."  },
+  { code: "PGK", label: "Papua New Guinean Kina",          flag: "🇵🇬", symbol: "K "   },
+  { code: "PHP", label: "Philippine Peso",                 flag: "🇵🇭", symbol: "₱"    },
+  { code: "PKR", label: "Pakistani Rupee",                 flag: "🇵🇰", symbol: "₨"    },
+  { code: "PLN", label: "Polish Zloty",                    flag: "🇵🇱", symbol: "zł "  },
+  { code: "PYG", label: "Paraguayan Guaraní",              flag: "🇵🇾", symbol: "₲"    },
+  { code: "QAR", label: "Qatari Riyal",                    flag: "🇶🇦", symbol: "QAR " },
+  { code: "RON", label: "Romanian Leu",                    flag: "🇷🇴", symbol: "lei " },
+  { code: "RSD", label: "Serbian Dinar",                   flag: "🇷🇸", symbol: "RSD " },
+  { code: "RUB", label: "Russian Ruble",                   flag: "🇷🇺", symbol: "₽"    },
+  { code: "RWF", label: "Rwandan Franc",                   flag: "🇷🇼", symbol: "Fr "  },
+  { code: "SAR", label: "Saudi Riyal",                     flag: "🇸🇦", symbol: "SAR " },
+  { code: "SBD", label: "Solomon Islands Dollar",          flag: "🇸🇧", symbol: "SI$"  },
+  { code: "SCR", label: "Seychellois Rupee",               flag: "🇸🇨", symbol: "Rs "  },
+  { code: "SDG", label: "Sudanese Pound",                  flag: "🇸🇩", symbol: "£SD " },
+  { code: "SEK", label: "Swedish Krona",                   flag: "🇸🇪", symbol: "kr "  },
+  { code: "SGD", label: "Singapore Dollar",                flag: "🇸🇬", symbol: "S$"   },
+  { code: "SHP", label: "Saint Helena Pound",              flag: "🇸🇭", symbol: "£"    },
+  { code: "SLL", label: "Sierra Leonean Leone",            flag: "🇸🇱", symbol: "Le "  },
+  { code: "SOS", label: "Somali Shilling",                 flag: "🇸🇴", symbol: "Sh "  },
+  { code: "SRD", label: "Surinamese Dollar",               flag: "🇸🇷", symbol: "Sr$"  },
+  { code: "STN", label: "São Tomé Dobra",                  flag: "🇸🇹", symbol: "Db "  },
+  { code: "SVC", label: "Salvadoran Colón",                flag: "🇸🇻", symbol: "₡"    },
+  { code: "SYP", label: "Syrian Pound",                    flag: "🇸🇾", symbol: "£S "  },
+  { code: "SZL", label: "Swazi Lilangeni",                 flag: "🇸🇿", symbol: "L "   },
+  { code: "THB", label: "Thai Baht",                       flag: "🇹🇭", symbol: "฿"    },
+  { code: "TJS", label: "Tajikistani Somoni",              flag: "🇹🇯", symbol: "SM "  },
+  { code: "TMT", label: "Turkmenistani Manat",             flag: "🇹🇲", symbol: "T "   },
+  { code: "TND", label: "Tunisian Dinar",                  flag: "🇹🇳", symbol: "DT "  },
+  { code: "TOP", label: "Tongan Paʻanga",                  flag: "🇹🇴", symbol: "T$"   },
+  { code: "TRY", label: "Turkish Lira",                    flag: "🇹🇷", symbol: "₺"    },
+  { code: "TTD", label: "Trinidad & Tobago Dollar",        flag: "🇹🇹", symbol: "TT$"  },
+  { code: "TWD", label: "Taiwan Dollar",                   flag: "🇹🇼", symbol: "NT$"  },
+  { code: "TZS", label: "Tanzanian Shilling",              flag: "🇹🇿", symbol: "TSh " },
+  { code: "UAH", label: "Ukrainian Hryvnia",               flag: "🇺🇦", symbol: "₴"    },
+  { code: "UGX", label: "Ugandan Shilling",                flag: "🇺🇬", symbol: "USh " },
+  { code: "USD", label: "US Dollar",                       flag: "🇺🇸", symbol: "$"    },
+  { code: "UYU", label: "Uruguayan Peso",                  flag: "🇺🇾", symbol: "$U "  },
+  { code: "UZS", label: "Uzbekistani Som",                 flag: "🇺🇿", symbol: "сум " },
+  { code: "VES", label: "Venezuelan Bolívar",              flag: "🇻🇪", symbol: "Bs.S" },
+  { code: "VND", label: "Vietnamese Dong",                 flag: "🇻🇳", symbol: "₫"    },
+  { code: "VUV", label: "Vanuatu Vatu",                    flag: "🇻🇺", symbol: "Vt "  },
+  { code: "WST", label: "Samoan Tala",                     flag: "🇼🇸", symbol: "T "   },
+  { code: "XAF", label: "Central African CFA",             flag: "🌍",  symbol: "CFA " },
+  { code: "XCD", label: "East Caribbean Dollar",           flag: "🌎",  symbol: "EC$"  },
+  { code: "XOF", label: "West African CFA",                flag: "🌍",  symbol: "CFA " },
+  { code: "XPF", label: "CFP Franc",                       flag: "🌏",  symbol: "Fr "  },
+  { code: "YER", label: "Yemeni Rial",                     flag: "🇾🇪", symbol: "﷼"    },
+  { code: "ZAR", label: "South African Rand",              flag: "🇿🇦", symbol: "R "   },
+  { code: "ZMW", label: "Zambian Kwacha",                  flag: "🇿🇲", symbol: "ZK "  },
+  { code: "ZWL", label: "Zimbabwean Dollar",               flag: "🇿🇼", symbol: "Z$"   },
+];
+
+/** Symbol lookup map derived from CURRENCY_LIST — includes all world currencies. */
+export const CURRENCY_SYMBOLS: Record<string, string> = Object.fromEntries(
+  CURRENCY_LIST.map(c => [c.code, c.symbol])
+);
+
+export function formatAmount(amount: number, currency: string): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? (currency + " ");
   return `${symbol}${amount.toFixed(2)}`;
 }
 
@@ -231,12 +381,19 @@ export interface Group {
   type: "trip" | "home" | "friends" | "couple" | "other";
   isArchived?: boolean;
   archivedAt?: string;
+  /** Group period ended (ended ≠ archived; ended groups may still have unsettled balances) */
+  isEnded?: boolean;
+  endedAt?: string;
+  /** Member IDs with admin powers; creator is added automatically */
+  adminIds?: string[];
   reminderDays?: number;
   startDate?: string;
   endDate?: string;
   tripStartReminderDays?: number;
   settleUpReminderDays?: number;
   nudgeCampaign?: NudgeCampaign;
+  /** Where reminders are delivered */
+  reminderChannel?: "push" | "email" | "both";
 }
 
 export interface GroupInvitation {
@@ -296,6 +453,9 @@ interface AppContextType {
   deleteGroup: (id: string) => void;
   archiveGroup: (id: string) => void;
   unarchiveGroup: (id: string) => void;
+  endGroup: (id: string) => void;
+  assignAdmin: (groupId: string, memberId: string) => void;
+  removeAdmin: (groupId: string, memberId: string) => void;
   addExpense: (expense: Omit<Expense, "id" | "createdAt">) => void;
   updateExpense: (id: string, updates: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
@@ -1595,6 +1755,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...group,
         id: genId(),
         createdAt: new Date().toISOString(),
+        adminIds: group.adminIds ?? [currentUser.id],
       };
       const updated = [newGroup, ...groups];
       setGroups(updated);
@@ -1635,6 +1796,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showToast("Group restored", "success");
     },
     [members, groups, expenses, settlements, invitations, saveData, showToast]
+  );
+
+  const endGroup = useCallback(
+    (id: string) => {
+      const updated = groups.map(g =>
+        g.id === id ? { ...g, isEnded: true, endedAt: new Date().toISOString() } : g
+      );
+      setGroups(updated);
+      saveData(members, updated, expenses, settlements, invitations);
+      showToast("Group period ended", "info");
+    },
+    [members, groups, expenses, settlements, invitations, saveData, showToast]
+  );
+
+  const assignAdmin = useCallback(
+    (groupId: string, memberId: string) => {
+      const updated = groups.map(g =>
+        g.id === groupId
+          ? { ...g, adminIds: [...new Set([...(g.adminIds ?? []), memberId])] }
+          : g
+      );
+      setGroups(updated);
+      saveData(members, updated, expenses, settlements, invitations);
+      showToast("Admin assigned", "success");
+    },
+    [members, groups, expenses, settlements, invitations, saveData, showToast]
+  );
+
+  const removeAdmin = useCallback(
+    (groupId: string, memberId: string) => {
+      const updated = groups.map(g =>
+        g.id === groupId
+          ? { ...g, adminIds: (g.adminIds ?? []).filter(id => id !== memberId) }
+          : g
+      );
+      setGroups(updated);
+      saveData(members, updated, expenses, settlements, invitations);
+    },
+    [members, groups, expenses, settlements, invitations, saveData]
   );
 
   const deleteGroup = useCallback(
@@ -2289,6 +2489,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateGroup,
         archiveGroup,
         unarchiveGroup,
+        endGroup,
+        assignAdmin,
+        removeAdmin,
         deleteGroup,
         addExpense,
         updateExpense,

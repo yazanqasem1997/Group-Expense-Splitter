@@ -16,7 +16,6 @@ import {
 } from "react-native";
 import { showAlert } from "@/hooks/alertStore";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
-import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -39,7 +38,6 @@ export default function FriendsScreen() {
   } = useApp();
 
   const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
   useEffect(() => {
     scrollRegistry.register("friends", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });

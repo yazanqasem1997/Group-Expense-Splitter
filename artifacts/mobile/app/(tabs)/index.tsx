@@ -16,7 +16,6 @@ import {
   View,
 } from "react-native";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
-import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
@@ -257,7 +256,7 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
 export default function GroupsScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { groups, expenses, settlements, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById, getGroupBalances, convertCurrency, currentUser, unarchiveGroup, checkAndAddRecurring, fetchExchangeRates } = useApp();
+  const { groups, expenses, settlements, recurringExpenses, getTotalOwed, getPendingInvitesForCurrentUser, getMemberById, getGroupBalances, convertCurrency, currentUser, unarchiveGroup, checkAndAddRecurring, fetchExchangeRates } = useApp();
   const { youOwe, youAreOwed, currency: totalCurrency } = useMemo(() => getTotalOwed(), [getTotalOwed]);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -273,7 +272,6 @@ export default function GroupsScreen() {
   const [showSort, setShowSort] = useState(false);
   const [sortBy, setSortBy] = useState<"balance" | "name" | "recent" | "activity">("balance");
   const listRef = useRef<FlatList>(null);
-  useScrollToTop(listRef);
   useEffect(() => {
     scrollRegistry.register("index", () => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -283,14 +281,16 @@ export default function GroupsScreen() {
   const searchRef = useRef<TextInput>(null);
 
   const archivedGroups = groups.filter(g => g.isArchived);
-  const [showArchived, setShowArchived] = useState(false);
-  const [showSettled, setShowSettled] = useState(false);
+  const [lifecycleTab, setLifecycleTab] = useState<"active" | "ended" | "settled" | "archived">("active");
 
-  const { settledGroups, activeGroups } = useMemo(() => {
+  const { activeGroups, endedGroups, settledGroups } = useMemo(() => {
     const nonArchived = groups.filter(g => !g.isArchived);
     const settled = nonArchived.filter(g => getGroupBalances(g.id).length === 0 && expenses.some(e => e.groupId === g.id));
     const settledIds = new Set(settled.map(g => g.id));
-    return { settledGroups: settled, activeGroups: nonArchived.filter(g => !settledIds.has(g.id)) };
+    const ended = nonArchived.filter(g => !!g.isEnded && !settledIds.has(g.id));
+    const endedIds = new Set(ended.map(g => g.id));
+    const active = nonArchived.filter(g => !g.isEnded && !settledIds.has(g.id));
+    return { activeGroups: active, endedGroups: ended, settledGroups: settled };
   }, [groups, getGroupBalances, expenses]);
   const pendingInvites = getPendingInvitesForCurrentUser();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -300,48 +300,61 @@ export default function GroupsScreen() {
   const isSearching = query.trim().length > 0;
 
   const filteredGroups = useMemo(() => {
-    let list = isSearching
-      ? activeGroups.filter(g => {
-          const q = query.toLowerCase().trim();
-          if (g.name.toLowerCase().includes(q)) return true;
-          return g.memberIds.some(id => getMemberById(id)?.name.toLowerCase().includes(q));
-        })
-      : [...activeGroups];
-
-    if (sortBy === "name") {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    } else if (sortBy === "recent") {
-      const lastActivity = (g: typeof list[0]) => {
-        const dates = [
-          new Date(g.createdAt).getTime(),
-          ...expenses.filter(e => e.groupId === g.id).map(e => new Date(e.createdAt).getTime()),
-          ...settlements.filter(s => s.groupId === g.id).map(s => new Date(s.createdAt).getTime()),
-        ];
-        return Math.max(...dates);
-      };
-      list.sort((a, b) => lastActivity(b) - lastActivity(a));
-    } else if (sortBy === "activity") {
-      const lastTxn = (g: typeof list[0]) => {
-        const dates = [
-          ...expenses.filter(e => e.groupId === g.id).map(e => new Date(e.createdAt).getTime()),
-          ...settlements.filter(s => s.groupId === g.id).map(s => new Date(s.createdAt).getTime()),
-        ];
-        return dates.length > 0 ? Math.max(...dates) : 0;
-      };
-      list.sort((a, b) => lastTxn(b) - lastTxn(a));
-    } else {
-      list.sort((a, b) => {
-        const netFor = (g: typeof a) => {
-          const d = getGroupBalances(g.id);
-          const credit = d.filter(r => r.toId === currentUser.id).reduce((s, r) => s + convertCurrency(r.amount, g.currency), 0);
-          const debt = d.filter(r => r.fromId === currentUser.id).reduce((s, r) => s + convertCurrency(r.amount, g.currency), 0);
-          return credit - debt;
-        };
-        return Math.abs(netFor(b)) - Math.abs(netFor(a));
+    // When searching, search across all non-archived groups
+    if (isSearching) {
+      const q = query.toLowerCase().trim();
+      return [...activeGroups, ...endedGroups, ...settledGroups].filter(g => {
+        if (g.name.toLowerCase().includes(q)) return true;
+        return g.memberIds.some(id => getMemberById(id)?.name.toLowerCase().includes(q));
       });
     }
+
+    // Pick the correct bucket
+    let list: typeof activeGroups = [];
+    switch (lifecycleTab) {
+      case "active":  list = [...activeGroups]; break;
+      case "ended":   list = [...endedGroups]; break;
+      case "settled": list = [...settledGroups]; break;
+      case "archived": list = [...archivedGroups]; break;
+    }
+
+    // Apply sort only to active tab
+    if (lifecycleTab === "active") {
+      if (sortBy === "name") {
+        list.sort((a, b) => a.name.localeCompare(b.name));
+      } else if (sortBy === "recent") {
+        const lastActivity = (g: typeof list[0]) => {
+          const dates = [
+            new Date(g.createdAt).getTime(),
+            ...expenses.filter(e => e.groupId === g.id).map(e => new Date(e.createdAt).getTime()),
+            ...settlements.filter(s => s.groupId === g.id).map(s => new Date(s.createdAt).getTime()),
+          ];
+          return Math.max(...dates);
+        };
+        list.sort((a, b) => lastActivity(b) - lastActivity(a));
+      } else if (sortBy === "activity") {
+        const lastTxn = (g: typeof list[0]) => {
+          const dates = [
+            ...expenses.filter(e => e.groupId === g.id).map(e => new Date(e.createdAt).getTime()),
+            ...settlements.filter(s => s.groupId === g.id).map(s => new Date(s.createdAt).getTime()),
+          ];
+          return dates.length > 0 ? Math.max(...dates) : 0;
+        };
+        list.sort((a, b) => lastTxn(b) - lastTxn(a));
+      } else {
+        list.sort((a, b) => {
+          const netFor = (g: typeof a) => {
+            const d = getGroupBalances(g.id);
+            const credit = d.filter(r => r.toId === currentUser.id).reduce((s, r) => s + convertCurrency(r.amount, g.currency), 0);
+            const debt = d.filter(r => r.fromId === currentUser.id).reduce((s, r) => s + convertCurrency(r.amount, g.currency), 0);
+            return credit - debt;
+          };
+          return Math.abs(netFor(b)) - Math.abs(netFor(a));
+        });
+      }
+    }
     return list;
-  }, [activeGroups, query, isSearching, getMemberById, sortBy, getGroupBalances, convertCurrency, currentUser.id, expenses, settlements]);
+  }, [activeGroups, endedGroups, settledGroups, archivedGroups, lifecycleTab, query, isSearching, getMemberById, sortBy, getGroupBalances, convertCurrency, currentUser.id, expenses, settlements]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -391,7 +404,50 @@ export default function GroupsScreen() {
             </Pressable>
           )}
         </View>
+
+        {/* Lifecycle tab strip */}
+        {!isSearching && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.lifecycleTabRow}
+          >
+            {(([
+              { id: "active",   label: "Active",   count: activeGroups.length   },
+              { id: "ended",    label: "Ended",    count: endedGroups.length    },
+              { id: "settled",  label: "Settled",  count: settledGroups.length  },
+              { id: "archived", label: "Archived", count: archivedGroups.length },
+            ] as { id: "active" | "ended" | "settled" | "archived"; label: string; count: number }[])).map(tab => {
+              const active = lifecycleTab === tab.id;
+              return (
+                <Pressable
+                  key={tab.id}
+                  style={[
+                    styles.lifecycleTab,
+                    {
+                      backgroundColor: active ? colors.primary : colors.surface,
+                      borderColor: active ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setLifecycleTab(tab.id); }}
+                >
+                  <Text style={[styles.lifecycleTabLabel, { color: active ? "#fff" : colors.text }]}>
+                    {tab.label}
+                  </Text>
+                  {tab.count > 0 && (
+                    <View style={[styles.lifecycleTabBadge, { backgroundColor: active ? "rgba(255,255,255,0.25)" : colors.primary + "20" }]}>
+                      <Text style={[styles.lifecycleTabBadgeText, { color: active ? "#fff" : colors.primary }]}>
+                        {tab.count}
+                      </Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
+
 
       <FlatList
         ref={listRef}
@@ -496,6 +552,62 @@ export default function GroupsScreen() {
                 </View>
               )}
 
+              {/* Recurring expenses quick-access */}
+              {lifecycleTab === "active" && (() => {
+                const activeCount = recurringExpenses.filter(r => r.isActive).length;
+                const totalCount = recurringExpenses.length;
+                if (totalCount === 0) return (
+                  <Pressable
+                    style={[styles.recurringBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/recurring"); }}
+                  >
+                    <View style={[styles.recurringIconWrap, { backgroundColor: colors.tealTint }]}>
+                      <Feather name="repeat" size={15} color={colors.teal} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.recurringBannerTitle, { color: colors.text }]}>Recurring Expenses</Text>
+                      <Text style={[styles.recurringBannerSub, { color: colors.textTertiary }]}>Automate regular splits</Text>
+                    </View>
+                    <Feather name="chevron-right" size={16} color={colors.textTertiary} />
+                  </Pressable>
+                );
+                // Find the next due schedule
+                const active = recurringExpenses.filter(r => r.isActive).sort((a, b) => new Date(a.nextDueAt).getTime() - new Date(b.nextDueAt).getTime());
+                const next = active[0];
+                const nextLabel = next ? (() => {
+                  const d = new Date(next.nextDueAt);
+                  const now = new Date();
+                  const diffMs = d.getTime() - now.getTime();
+                  const diffDays = Math.ceil(diffMs / 86400000);
+                  if (diffDays <= 0) return "Due today";
+                  if (diffDays === 1) return "Due tomorrow";
+                  if (diffDays <= 7) return `Due in ${diffDays}d`;
+                  return `Due ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+                })() : null;
+                return (
+                  <Pressable
+                    style={[styles.recurringBanner, { backgroundColor: colors.surface, borderColor: colors.teal + "30" }]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/recurring"); }}
+                  >
+                    <View style={[styles.recurringIconWrap, { backgroundColor: colors.tealTint }]}>
+                      <Feather name="repeat" size={15} color={colors.teal} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.recurringBannerTitle, { color: colors.text }]}>
+                        {activeCount} active {activeCount === 1 ? "schedule" : "schedules"}
+                        {totalCount > activeCount ? <Text style={{ color: colors.textTertiary }}> · {totalCount - activeCount} paused</Text> : null}
+                      </Text>
+                      {nextLabel && (
+                        <Text style={[styles.recurringBannerSub, { color: colors.textTertiary }]}>
+                          {next.description} · {nextLabel}
+                        </Text>
+                      )}
+                    </View>
+                    <Feather name="chevron-right" size={16} color={colors.textTertiary} />
+                  </Pressable>
+                );
+              })()}
+
               {/* Section label */}
               {activeGroups.length > 0 && (
                 <View style={styles.sectionLabelRow}>
@@ -517,114 +629,28 @@ export default function GroupsScreen() {
           )
         }
         ListEmptyComponent={
-          isSearching ? null : (
+          isSearching ? (
+            <View style={styles.searchResultHeader}>
+              <Text style={[styles.searchResultText, { color: colors.textSecondary }]}>No groups match</Text>
+            </View>
+          ) : lifecycleTab === "active" ? (
             pendingInvites.length === 0 ? (
               <EmptyState
                 icon="users"
-                title="No groups yet"
+                title="No active groups"
                 subtitle="Create a group to start splitting expenses with friends"
               />
             ) : null
+          ) : lifecycleTab === "ended" ? (
+            <EmptyState icon="flag" title="No ended groups" subtitle="Groups you end will appear here until settled" />
+          ) : lifecycleTab === "settled" ? (
+            <EmptyState icon="check-circle" title="Nothing settled yet" subtitle="Groups with all balances cleared appear here" />
+          ) : (
+            <EmptyState icon="archive" title="No archived groups" subtitle="Archived groups are hidden from your main view" />
           )
         }
         renderItem={({ item }) => <GroupCard groupId={item.id} query={query} />}
-        ListFooterComponent={
-          (settledGroups.length > 0 || archivedGroups.length > 0) && !isSearching ? (
-            <View>
-              {/* Settled Groups */}
-              {settledGroups.length > 0 && (
-                <View style={styles.archivedSection}>
-                  <Pressable
-                    style={[styles.archivedPill, { backgroundColor: colors.successLight ?? colors.tealTint, borderColor: colors.teal + "40" }]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowSettled(v => !v); }}
-                  >
-                    <Feather name="check-circle" size={13} color={colors.teal} />
-                    <Text style={[styles.archivedPillText, { color: colors.teal }]}>
-                      {settledGroups.length} settled {settledGroups.length === 1 ? "group" : "groups"}
-                    </Text>
-                    <Feather name={showSettled ? "chevron-up" : "chevron-down"} size={13} color={colors.teal} />
-                  </Pressable>
-
-                  {showSettled && settledGroups.map(g => {
-                    const gMembers = g.memberIds.slice(0, 4).map(mid => getMemberById(mid)).filter(Boolean);
-                    return (
-                      <Pressable
-                        key={g.id}
-                        style={[styles.archivedCard, { backgroundColor: colors.cardBg, borderColor: colors.teal + "30" }]}
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/group/[id]", params: { id: g.id } }); }}
-                      >
-                        <View style={[styles.archivedEmoji, { backgroundColor: colors.tealTint }]}>
-                          <Text style={{ fontSize: 22 }}>{g.emoji}</Text>
-                        </View>
-                        <View style={styles.archivedInfo}>
-                          <Text style={[styles.archivedName, { color: colors.text }]} numberOfLines={1}>{g.name}</Text>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: -3 }}>
-                            {gMembers.map(m => m ? <Avatar key={m.id} name={m.name} color={m.avatarColor} size={16} style={{ marginRight: -4 }} /> : null)}
-                            <Text style={[styles.archivedMeta, { color: colors.textTertiary }]}>
-                              {"  "}{g.memberIds.length} {g.memberIds.length === 1 ? "person" : "people"}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={[styles.settledBadge, { backgroundColor: colors.tealTint, borderColor: colors.teal + "40" }]}>
-                          <Feather name="check" size={11} color={colors.teal} />
-                          <Text style={[styles.settledBadgeText, { color: colors.teal }]}>Settled</Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-
-              {/* Archived Groups */}
-              {archivedGroups.length > 0 && (
-                <View style={styles.archivedSection}>
-                  <Pressable
-                    style={[styles.archivedPill, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowArchived(v => !v); }}
-                  >
-                    <Feather name="archive" size={13} color={colors.textSecondary} />
-                    <Text style={[styles.archivedPillText, { color: colors.textSecondary }]}>
-                      {archivedGroups.length} archived {archivedGroups.length === 1 ? "group" : "groups"}
-                    </Text>
-                    <Feather name={showArchived ? "chevron-up" : "chevron-down"} size={13} color={colors.textTertiary} />
-                  </Pressable>
-
-                  {showArchived && archivedGroups.map(g => {
-                    const members = g.memberIds.slice(0, 4).map(id => getMemberById(id)).filter(Boolean);
-                    return (
-                      <Pressable
-                        key={g.id}
-                        style={[styles.archivedCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/group/[id]", params: { id: g.id } }); }}
-                      >
-                        <View style={[styles.archivedEmoji, { backgroundColor: colors.inputBg }]}>
-                          <Text style={{ fontSize: 22 }}>{g.emoji}</Text>
-                        </View>
-                        <View style={styles.archivedInfo}>
-                          <Text style={[styles.archivedName, { color: colors.textSecondary }]} numberOfLines={1}>{g.name}</Text>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: -3 }}>
-                            {members.map(m => m ? <Avatar key={m.id} name={m.name} color={m.avatarColor} size={16} style={{ marginRight: -4 }} /> : null)}
-                            <Text style={[styles.archivedMeta, { color: colors.textTertiary }]}>
-                              {"  "}{g.memberIds.length} {g.memberIds.length === 1 ? "person" : "people"}
-                            </Text>
-                          </View>
-                        </View>
-                        <Pressable
-                          style={[styles.unarchiveBtn, { backgroundColor: colors.primary + "14", borderColor: colors.primary + "30" }]}
-                          onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); unarchiveGroup(g.id); }}
-                          hitSlop={8}
-                        >
-                          <Feather name="rotate-ccw" size={12} color={colors.primary} />
-                          <Text style={[styles.unarchiveBtnText, { color: colors.primary }]}>Restore</Text>
-                        </Pressable>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          ) : null
-        }
+        ListFooterComponent={null}
       />
 
       <BalanceBreakdownModal visible={showBreakdown} onClose={() => setShowBreakdown(false)} />
@@ -706,6 +732,29 @@ const styles = StyleSheet.create({
   searchResultText: { fontSize: 13, fontFamily: "Inter_500Medium" },
 
   listContent: { padding: 16, gap: 2 },
+  recurringBanner: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderRadius: 14, borderWidth: 1,
+    marginBottom: 8,
+  },
+  recurringIconWrap: {
+    width: 34, height: 34, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+  },
+  recurringBannerTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  recurringBannerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  lifecycleTabRow: { gap: 8, paddingHorizontal: 2 },
+  lifecycleTab: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5,
+  },
+  lifecycleTabLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  lifecycleTabBadge: {
+    minWidth: 20, height: 20, borderRadius: 10,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 5,
+  },
+  lifecycleTabBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold" },
 
   /* Gradient hero card */
   heroCard: {

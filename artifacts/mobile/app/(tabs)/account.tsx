@@ -24,69 +24,15 @@ import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
-import { Currency, useApp } from "@/context/AppContext";
+import { CURRENCY_LIST, Currency, useApp } from "@/context/AppContext";
+import { CurrencyPickerModal } from "@/components/CurrencyPickerModal";
+
+const CURRENCIES = CURRENCY_LIST;
 import { useBiometric } from "@/context/BiometricContext";
 import { useTheme } from "@/hooks/useTheme";
 
 
-const CURRENCIES: { code: Currency; label: string; flag: string }[] = [
-  { code: "USD", label: "US Dollar",             flag: "🇺🇸" },
-  { code: "EUR", label: "Euro",                  flag: "🇪🇺" },
-  { code: "GBP", label: "British Pound",         flag: "🇬🇧" },
-  { code: "CAD", label: "Canadian Dollar",       flag: "🇨🇦" },
-  { code: "AUD", label: "Australian Dollar",     flag: "🇦🇺" },
-  { code: "JPY", label: "Japanese Yen",          flag: "🇯🇵" },
-  { code: "INR", label: "Indian Rupee",          flag: "🇮🇳" },
-  { code: "AED", label: "UAE Dirham",            flag: "🇦🇪" },
-  { code: "CHF", label: "Swiss Franc",           flag: "🇨🇭" },
-  { code: "SEK", label: "Swedish Krona",         flag: "🇸🇪" },
-  { code: "NOK", label: "Norwegian Krone",       flag: "🇳🇴" },
-  { code: "DKK", label: "Danish Krone",          flag: "🇩🇰" },
-  { code: "NZD", label: "New Zealand Dollar",    flag: "🇳🇿" },
-  { code: "SGD", label: "Singapore Dollar",      flag: "🇸🇬" },
-  { code: "HKD", label: "Hong Kong Dollar",      flag: "🇭🇰" },
-  { code: "MXN", label: "Mexican Peso",          flag: "🇲🇽" },
-  { code: "BRL", label: "Brazilian Real",        flag: "🇧🇷" },
-  { code: "CNY", label: "Chinese Yuan",          flag: "🇨🇳" },
-  { code: "ZAR", label: "South African Rand",    flag: "🇿🇦" },
-  { code: "TRY", label: "Turkish Lira",          flag: "🇹🇷" },
-  { code: "KRW", label: "South Korean Won",      flag: "🇰🇷" },
-  { code: "THB", label: "Thai Baht",             flag: "🇹🇭" },
-  { code: "IDR", label: "Indonesian Rupiah",     flag: "🇮🇩" },
-  { code: "MYR", label: "Malaysian Ringgit",     flag: "🇲🇾" },
-  { code: "PHP", label: "Philippine Peso",       flag: "🇵🇭" },
-  { code: "SAR", label: "Saudi Riyal",           flag: "🇸🇦" },
-  { code: "QAR", label: "Qatari Riyal",          flag: "🇶🇦" },
-  { code: "KWD", label: "Kuwaiti Dinar",         flag: "🇰🇼" },
-  { code: "OMR", label: "Omani Rial",            flag: "🇴🇲" },
-  { code: "BHD", label: "Bahraini Dinar",        flag: "🇧🇭" },
-  { code: "ILS", label: "Israeli Shekel",        flag: "🇮🇱" },
-  { code: "EGP", label: "Egyptian Pound",        flag: "🇪🇬" },
-  { code: "NGN", label: "Nigerian Naira",        flag: "🇳🇬" },
-  { code: "KES", label: "Kenyan Shilling",       flag: "🇰🇪" },
-  { code: "GHS", label: "Ghanaian Cedi",         flag: "🇬🇭" },
-  { code: "MAD", label: "Moroccan Dirham",       flag: "🇲🇦" },
-  { code: "XOF", label: "West African CFA",      flag: "🌍" },
-  { code: "XAF", label: "Central African CFA",   flag: "🌍" },
-  { code: "COP", label: "Colombian Peso",        flag: "🇨🇴" },
-  { code: "CLP", label: "Chilean Peso",          flag: "🇨🇱" },
-  { code: "ARS", label: "Argentine Peso",        flag: "🇦🇷" },
-  { code: "PEN", label: "Peruvian Sol",          flag: "🇵🇪" },
-  { code: "PKR", label: "Pakistani Rupee",       flag: "🇵🇰" },
-  { code: "BDT", label: "Bangladeshi Taka",      flag: "🇧🇩" },
-  { code: "LKR", label: "Sri Lankan Rupee",      flag: "🇱🇰" },
-  { code: "TWD", label: "Taiwan Dollar",         flag: "🇹🇼" },
-  { code: "VND", label: "Vietnamese Dong",       flag: "🇻🇳" },
-  { code: "MMK", label: "Myanmar Kyat",          flag: "🇲🇲" },
-  { code: "HUF", label: "Hungarian Forint",      flag: "🇭🇺" },
-  { code: "PLN", label: "Polish Zloty",          flag: "🇵🇱" },
-  { code: "CZK", label: "Czech Koruna",          flag: "🇨🇿" },
-  { code: "RON", label: "Romanian Leu",          flag: "🇷🇴" },
-  { code: "BGN", label: "Bulgarian Lev",         flag: "🇧🇬" },
-  { code: "HRK", label: "Croatian Kuna",         flag: "🇭🇷" },
-  { code: "RUB", label: "Russian Ruble",         flag: "🇷🇺" },
-  { code: "UAH", label: "Ukrainian Hryvnia",     flag: "🇺🇦" },
-];
+// CURRENCIES is now sourced from AppContext so all world currencies are included
 
 
 function SectionTitle({ label }: { label: string }) {
@@ -160,7 +106,7 @@ export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const {
     currentUser, updateCurrentUser,
-    expenses, groups, settlements, recurringExpenses,
+    expenses, groups, settlements,
     simplifyDebtsEnabled, toggleSimplifyDebts,
     defaultCurrency, setDefaultCurrency,
     exchangeRates, ratesUpdated, fetchExchangeRates,
@@ -176,13 +122,11 @@ export default function AccountScreen() {
   ).length;
 
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
-  const [currencySearch, setCurrencySearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingRates, setRefreshingRates] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
   const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
   useEffect(() => {
     scrollRegistry.register("account", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -264,6 +208,7 @@ export default function AccountScreen() {
       ref={scrollRef}
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
+      keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -544,12 +489,6 @@ export default function AccountScreen() {
           label="Default Currency"
           value={`${selectedCurrencyInfo.flag}  ${defaultCurrency}`}
           onPress={() => setShowCurrencyPicker(true)}
-        />
-        <ChevronRow
-          icon="repeat" iconBg={colors.tealTint} iconColor={colors.teal}
-          label="Recurring Expenses"
-          value={recurringExpenses.length > 0 ? `${recurringExpenses.filter(r => r.isActive).length} active` : "None set up"}
-          onPress={() => router.push("/recurring")}
           isLast
         />
       </View>
@@ -621,67 +560,13 @@ export default function AccountScreen() {
 
       <Text style={[styles.version, { color: colors.textTertiary }]}>SplitEasy v1.0.0</Text>
 
-      {/* Currency picker modal */}
-      <Modal
+      <CurrencyPickerModal
         visible={showCurrencyPicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { setShowCurrencyPicker(false); setCurrencySearch(""); }}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => { setShowCurrencyPicker(false); setCurrencySearch(""); }}>
-          <Pressable style={[styles.pickerSheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
-            <View style={[styles.pickerHandle, { backgroundColor: colors.border }]} />
-            <Text style={[styles.pickerTitle, { color: colors.text }]}>Default Currency</Text>
-            <View style={[styles.currencySearchWrap, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
-              <Feather name="search" size={15} color={colors.textTertiary} />
-              <TextInput
-                style={[styles.currencySearchInput, { color: colors.text }]}
-                placeholder="Search currencies…"
-                placeholderTextColor={colors.textTertiary}
-                value={currencySearch}
-                onChangeText={setCurrencySearch}
-                autoCapitalize="none"
-                autoCorrect={false}
-                clearButtonMode="while-editing"
-              />
-            </View>
-            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {CURRENCIES
-                .filter(c => {
-                  const q = currencySearch.toLowerCase();
-                  return !q || c.code.toLowerCase().includes(q) || c.label.toLowerCase().includes(q);
-                })
-                .map((c, i, arr) => {
-                  const isSelected = c.code === defaultCurrency;
-                  return (
-                    <Pressable
-                      key={c.code}
-                      style={[
-                        styles.currencyRow,
-                        isSelected && { backgroundColor: colors.primaryLight },
-                        i < arr.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-                      ]}
-                      onPress={() => { setDefaultCurrency(c.code); setShowCurrencyPicker(false); setCurrencySearch(""); }}
-                    >
-                      <Text style={styles.currencyFlag}>{c.flag}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.currencyCode, { color: colors.text }]}>{c.code}</Text>
-                        <Text style={[styles.currencyLabel, { color: colors.textSecondary }]}>{c.label}</Text>
-                      </View>
-                      {isSelected && <Feather name="check" size={18} color={colors.primary} />}
-                    </Pressable>
-                  );
-                })}
-            </ScrollView>
-            <Pressable
-              style={[styles.cancelBtn, { backgroundColor: colors.background }]}
-              onPress={() => { setShowCurrencyPicker(false); setCurrencySearch(""); }}
-            >
-              <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={() => setShowCurrencyPicker(false)}
+        value={defaultCurrency}
+        onChange={code => { setDefaultCurrency(code); }}
+        title="Default Currency"
+      />
     </ScrollView>
   );
 }

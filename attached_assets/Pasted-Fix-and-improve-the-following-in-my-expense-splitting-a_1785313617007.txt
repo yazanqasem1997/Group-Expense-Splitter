@@ -1,0 +1,27 @@
+Fix and improve the following in my expense-splitting app. Work through them one by one and keep the UI consistent across the whole app.
+
+1. "Repeat this expense" button: contrast is too low, users can't see it. Restyle it so it's clearly visible in both light and dark mode (proper contrast ratio, visible button styling).
+
+2. Expense history: currently only says "X created this expense." Extend it to also show:
+   - the amount at the time of creation
+   - who paid and who was involved
+   - how it was split (method + per-person shares)
+   - track and display any later changes to these details.
+
+3. Keyboard behavior: on the "create new group" screen, scrolling down should dismiss the keypad (same behavior we already have elsewhere). Apply this consistently on all screens with inputs.
+
+4. Currency picker: show the main currencies first, plus a "More" option that expands to ALL world currencies. Each currency shows its flag in a circular icon. Use this same picker everywhere currencies appear.
+
+5. Form validation (app-wide): when a required field is missing on submit, highlight that field in red and auto-scroll the user to it. Apply this pattern to every form in the app, including group creation.
+
+6. Export to Excel: there should be an export-to-Excel feature for any group. If it's missing, add it; if it exists, make it clearly discoverable in each group's screen.
+
+7. Analytics: currently only shows USD and EUR. Support all currencies the app supports, consistent with the currency picker above. Audit the whole app for currency consistency.
+
+8. Trip dates & reminders: make this flow interactive like the recurring payments flow. Keep the current popup window (it's good) but make it more interactive. Let users choose delivery channel: notifications, email, or both. Apply this to BOTH post-trip reminders and recurring payments.
+
+9. Admin roles: allow group creators to assign admins. Admins get powers like ending the trip/period early.
+
+10. Group lifecycle: ending a trip should move groups into one of 4 categories shown as tabs/sections in the Groups tab: "Active", "Ended but unsettled", "Settled", "Archived".
+
+After implementing, test each item and confirm the validation, currency picker, and keyboard-dismiss behaviors are consistent on every screen.

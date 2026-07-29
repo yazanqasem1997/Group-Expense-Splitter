@@ -1,6 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
 
@@ -51,6 +53,7 @@ export default function GroupDetailScreen() {
     getGroupBalances, getGroupPendingInvites, sendGroupInvite,
     currentUser, deleteGroup, deleteExpense, deleteSettlement,
     addSettlement, addSettlements, archiveGroup, unarchiveGroup,
+    endGroup, assignAdmin, removeAdmin,
     addGroupMessage, getGroupMessages, updateGroup,
     checkAndAddRecurring, fetchExchangeRates, checkAndSendGroupReminders,
     recurringExpenses, updateRecurringExpense, deleteRecurringExpense,
@@ -92,6 +95,8 @@ export default function GroupDetailScreen() {
   const [nudgeFreqDays, setNudgeFreqDays] = useState("7");
   const [nudgeMaxNudges, setNudgeMaxNudges] = useState("5");
   const [nudgeTone, setNudgeTone] = useState<NudgeTone>("friendly");
+  // Reminder channel state
+  const [reminderChannel, setReminderChannel] = useState<"push" | "email" | "both">("push");
 
   // Recurring expense management
   const [editingRecurring, setEditingRecurring] = useState<RecurringExpense | null>(null);
@@ -200,6 +205,26 @@ export default function GroupDetailScreen() {
     const tripDatesBtn = group.type === "trip"
       ? [{ text: "Trip Dates & Reminders", onPress: openTripDatesModal }]
       : [];
+    const isAdmin = (group.adminIds ?? []).includes(currentUser.id);
+    const endBtn = !group.isEnded && isAdmin
+      ? [{
+          text: "End Group Period",
+          onPress: () => {
+            showAlert(
+              "End Group Period",
+              "This marks the group as ended. Members can still settle up, but no new expenses should be added.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "End Period",
+                  style: "destructive",
+                  onPress: () => endGroup(id),
+                },
+              ]
+            );
+          },
+        }]
+      : [];
     showAlert(group.name, "Group options", [
       {
         text: "Add Expense",
@@ -209,7 +234,12 @@ export default function GroupDetailScreen() {
         text: "QR Invite Code",
         onPress: () => router.push({ pathname: "/group/qr/[id]", params: { id } }),
       },
+      {
+        text: "Export to Excel",
+        onPress: handleExport,
+      },
       ...tripDatesBtn,
+      ...endBtn,
       {
         text: archiveLabel,
         onPress: () => {
@@ -231,6 +261,7 @@ export default function GroupDetailScreen() {
     setTripEndInput(group?.endDate ?? "");
     setTripStartReminderInput(String(group?.tripStartReminderDays ?? 2));
     setSettleUpReminderInput(String(group?.settleUpReminderDays ?? 7));
+    setReminderChannel(group?.reminderChannel ?? "push");
     const campaign = group?.nudgeCampaign;
     setNudgeActive(campaign?.isActive ?? false);
     setNudgeStartDays(String(campaign?.startDaysAfterEnd ?? 3));
@@ -248,6 +279,7 @@ export default function GroupDetailScreen() {
       endDate: tripEndInput.trim() || undefined,
       tripStartReminderDays: parseInt(tripStartReminderInput) || undefined,
       settleUpReminderDays: parseInt(settleUpReminderInput) || undefined,
+      reminderChannel,
       nudgeCampaign: nudgeActive ? {
         isActive: true,
         startDaysAfterEnd: parseInt(nudgeStartDays) || 3,
@@ -270,6 +302,59 @@ export default function GroupDetailScreen() {
         onPress: () => { deleteGroup(id); router.back(); },
       },
     ]);
+  }
+
+  async function handleExport() {
+    if (!group) return;
+    try {
+      const XLSX = await import("xlsx");
+      const expenseHeader = ["Date","Description","Amount","Currency","Paid By","Category","Involved","Per-Person Shares"];
+      const expenseRows = groupExpenses.map(e => {
+        const payer = getMemberById(e.paidById);
+        const shares = (e.splits ?? []).map(s => `${getMemberById(s.memberId)?.name ?? "?"}: ${e.currency} ${s.amount.toFixed(2)}`).join("; ");
+        const involved = (e.splits ?? []).map(s => getMemberById(s.memberId)?.name ?? "?").join(", ");
+        return [new Date(e.createdAt).toLocaleDateString("en-GB"), e.description, e.amount, e.currency, payer?.name ?? "?", e.category ?? "", involved, shares];
+      });
+      const settlementHeader = ["Date","From","To","Amount","Currency"];
+      const settlementRows = groupSettlements.map(s => [
+        new Date(s.createdAt).toLocaleDateString("en-GB"),
+        getMemberById(s.fromId)?.name ?? "?",
+        getMemberById(s.toId)?.name ?? "?",
+        s.amount, s.currency,
+      ]);
+      const auditHeader = ["Date / Time","Expense","Changed By","Action","Field","Old Value","New Value"];
+      const auditRows: (string | number)[][] = [];
+      groupExpenses.forEach(e => {
+        (e.auditLog ?? []).forEach(entry => {
+          const ts = new Date(entry.changedAt).toLocaleString("en-GB");
+          const changer = getMemberById(entry.changedBy)?.name ?? "?";
+          if (entry.fieldChanges?.length) {
+            entry.fieldChanges.forEach(fc => { auditRows.push([ts, e.description, changer, entry.action, fc.field, fc.oldValue, fc.newValue]); });
+          } else {
+            auditRows.push([ts, e.description, changer, entry.action, "—","—","—"]);
+          }
+        });
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([expenseHeader, ...expenseRows]), "Expenses");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([settlementHeader, ...settlementRows]), "Settlements");
+      if (auditRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([auditHeader, ...auditRows]), "Audit Log");
+      const base64 = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+      const slug = group.name.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+      const uri = `${FileSystem.cacheDirectory}${slug}_expenses.xlsx`;
+      await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          dialogTitle: `Export — ${group.name}`,
+          UTI: "com.microsoft.excel.xlsx",
+        });
+      } else {
+        showAlert("Export", "Sharing is not available on this device.");
+      }
+    } catch (err) {
+      showAlert("Export failed", String(err));
+    }
   }
 
   function handleSettleAll() {
@@ -791,6 +876,13 @@ export default function GroupDetailScreen() {
             <Text style={styles.settleAllBtnText}>Settle Up</Text>
           </Pressable>
         )}
+        <Pressable
+          onPress={handleExport}
+          style={{ padding: 4, marginRight: 2 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Feather name="download" size={22} color={colors.text} />
+        </Pressable>
         <Pressable onPress={handleGroupOptions}>
           <Feather name="more-horizontal" size={24} color={colors.text} />
         </Pressable>
@@ -978,23 +1070,25 @@ export default function GroupDetailScreen() {
       </View>
 
       {tab === "expenses" ? (
-        <FlatList
-          data={feedItems}
-          keyExtractor={item => item.id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
-          ListHeaderComponent={renderRecurringSection()}
-          ListEmptyComponent={groupRecurring.length === 0 ? <EmptyState icon="credit-card" title="No expenses yet" subtitle="Add your first expense to start splitting" /> : null}
-          renderItem={({ item }) => item.type === "expense" ? renderExpenseItem(item.data) : renderSettlementItem(item.data)}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
-          }
-        />
+        <>
+          {renderRecurringSection()}
+          <FlatList
+            data={feedItems}
+            keyExtractor={item => item.id}
+            contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
+            ListEmptyComponent={<EmptyState icon="credit-card" title="No expenses yet" subtitle="Add your first expense to start splitting" />}
+            renderItem={({ item }) => item.type === "expense" ? renderExpenseItem(item.data) : renderSettlementItem(item.data)}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            }
+          />
+        </>
       ) : tab === "balances" ? (
         <View style={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100, flex: 1 }]}>
           {renderBalances()}
@@ -1180,6 +1274,35 @@ export default function GroupDetailScreen() {
                     keyboardType="number-pad"
                     maxLength={2}
                   />
+                </View>
+              </View>
+
+              {/* ── Reminder Channel ───────────────────────────────── */}
+              <View style={[styles.tripRemindersSection, { borderTopColor: colors.border }]}>
+                <Text style={[styles.tripModalLabel, { color: colors.textSecondary }]}>Remind via</Text>
+                <View style={styles.channelRow}>
+                  {([
+                    { val: "push" as const, label: "Push", icon: "bell" },
+                    { val: "email" as const, label: "Email", icon: "mail" },
+                    { val: "both" as const, label: "Both", icon: "layers" },
+                  ]).map(opt => (
+                    <Pressable
+                      key={opt.val}
+                      style={[
+                        styles.channelBtn,
+                        {
+                          backgroundColor: reminderChannel === opt.val ? colors.primaryLight : colors.background,
+                          borderColor: reminderChannel === opt.val ? colors.primary : colors.border,
+                        },
+                      ]}
+                      onPress={() => { setReminderChannel(opt.val); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    >
+                      <Feather name={opt.icon as "bell"} size={14} color={reminderChannel === opt.val ? colors.primary : colors.textSecondary} />
+                      <Text style={[styles.channelBtnText, { color: reminderChannel === opt.val ? colors.primary : colors.text }]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
                 </View>
               </View>
 
@@ -1747,6 +1870,12 @@ const styles = StyleSheet.create({
   settleSheetBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center", borderWidth: 1 },
   settleSheetBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   nudgeSection: { borderTopWidth: 1, marginTop: 20, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 8, gap: 14 },
+  channelRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+  channelBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5,
+  },
+  channelBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   nudgeSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   nudgeSectionTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   nudgeSectionSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },

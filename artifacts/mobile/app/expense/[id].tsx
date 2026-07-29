@@ -143,6 +143,7 @@ export default function ExpenseDetailScreen() {
           contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 60 : 40 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* Hero */}
           <View style={[styles.heroCard, { backgroundColor: colors.surface }]}>
@@ -341,6 +342,55 @@ export default function ExpenseDetailScreen() {
                             ? " edited this expense"
                             : " deleted this expense"}
                         </Text>
+
+                        {/* Rich creation snapshot */}
+                        {entry.action === "created" && (() => {
+                          const payerM = getMemberById(expense.paidById);
+                          const involvedNames = (expense.splits ?? [])
+                            .map(s => {
+                              const m = getMemberById(s.memberId);
+                              return m ? (m.isCurrentUser ? "You" : m.name.split(" ")[0]) : null;
+                            })
+                            .filter(Boolean);
+                          return (
+                            <View style={[styles.creationDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                              <View style={styles.creationRow}>
+                                <Text style={[styles.creationKey, { color: colors.textTertiary }]}>Amount</Text>
+                                <Text style={[styles.creationVal, { color: colors.text }]}>
+                                  {formatAmount(expense.amount, expense.currency)}
+                                </Text>
+                              </View>
+                              <View style={styles.creationRow}>
+                                <Text style={[styles.creationKey, { color: colors.textTertiary }]}>Paid by</Text>
+                                <Text style={[styles.creationVal, { color: colors.text }]}>
+                                  {payerM ? (payerM.isCurrentUser ? "You" : payerM.name) : "Unknown"}
+                                </Text>
+                              </View>
+                              <View style={styles.creationRow}>
+                                <Text style={[styles.creationKey, { color: colors.textTertiary }]}>Split</Text>
+                                <Text style={[styles.creationVal, { color: colors.text }]}>
+                                  {expense.splitType.charAt(0).toUpperCase() + expense.splitType.slice(1)}
+                                  {" · "}{involvedNames.length} {involvedNames.length === 1 ? "person" : "people"}
+                                </Text>
+                              </View>
+                              {(expense.splits ?? []).map((sp, si) => {
+                                const m = getMemberById(sp.memberId);
+                                if (!m) return null;
+                                return (
+                                  <View key={si} style={[styles.creationShareRow, { borderTopColor: colors.border }]}>
+                                    <Text style={[styles.creationShareName, { color: colors.textSecondary }]}>
+                                      {m.isCurrentUser ? "You" : m.name.split(" ")[0]}
+                                    </Text>
+                                    <Text style={[styles.creationShareAmt, { color: colors.textSecondary }]}>
+                                      {formatAmount(sp.amount, expense.currency)}
+                                    </Text>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          );
+                        })()}
+
                         {(entry.fieldChanges ?? []).map((fc, i) => (
                           <Text key={i} style={[styles.auditChange, { color: colors.textSecondary }]}>
                             <Text style={{ fontFamily: "Inter_600SemiBold", color: colors.textSecondary }}>
@@ -522,4 +572,19 @@ const styles = StyleSheet.create({
   auditTitle: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 18 },
   auditChange: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
   auditTime: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  creationDetails: {
+    marginTop: 8, borderRadius: 10, borderWidth: 1, overflow: "hidden",
+  },
+  creationRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 10, paddingVertical: 7,
+  },
+  creationKey: { fontSize: 11, fontFamily: "Inter_400Regular", flex: 1 },
+  creationVal: { fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "right" },
+  creationShareRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 10, paddingVertical: 5, borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  creationShareName: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  creationShareAmt: { fontSize: 11, fontFamily: "Inter_500Medium" },
 });

@@ -12,14 +12,13 @@ import {
   View,
 } from "react-native";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
-import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { NotificationSheet } from "@/components/NotificationSheet";
-import { Expense, Settlement, useApp } from "@/context/AppContext";
+import { AppNotification, Expense, RecurringExpense, Settlement, useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
@@ -39,10 +38,12 @@ export default function ActivityScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const {
-    expenses, settlements, getMemberById, getGroupById, currentUser,
+    expenses, settlements, recurringExpenses, groups,
+    getMemberById, getGroupById, currentUser,
     checkAndAddRecurring, fetchExchangeRates,
     unreadNotificationCount,
     checkAndSendGroupReminders,
+    updateRecurringExpense,
   } = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -68,7 +69,6 @@ export default function ActivityScreen() {
     }
   }, [filter]);
   const listRef = useRef<FlatList>(null);
-  useScrollToTop(listRef);
   useEffect(() => {
     scrollRegistry.register("activity", () => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -126,6 +126,12 @@ export default function ActivityScreen() {
 
   const expenseCount = allItems.filter(i => i.type === "expense").length;
   const settlementCount = allItems.filter(i => i.type === "settlement").length;
+
+  // Recurring schedules pinned at top: active only, across all groups the user belongs to
+  const activeRecurring = useMemo(() => {
+    const myGroupIds = new Set(groups.filter(g => g.memberIds.includes(currentUser.id)).map(g => g.id));
+    return recurringExpenses.filter(r => r.isActive && myGroupIds.has(r.groupId));
+  }, [recurringExpenses, groups, currentUser.id]);
 
   function highlightText(text: string, style: object) {
     if (!q) return <Text style={style} numberOfLines={1}>{text}</Text>;
@@ -315,6 +321,49 @@ export default function ActivityScreen() {
         onClose={() => setShowNotifSheet(false)}
       />
 
+      {/* Pinned recurring strip */}
+      {activeRecurring.length > 0 && (
+        <View style={[styles.recurStrip, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}>
+          <Text style={[styles.recurStripLabel, { color: colors.textSecondary }]}>
+            🔁 Recurring
+          </Text>
+          <FlatList
+            data={activeRecurring}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={r => r.id}
+            contentContainerStyle={styles.recurStripScroll}
+            renderItem={({ item: r }) => {
+              const grp = getGroupById(r.groupId);
+              return (
+                <Pressable
+                  style={[styles.recurCard, { backgroundColor: colors.background, borderColor: colors.border }]}
+                  onPress={() => router.push({ pathname: "/group/[id]", params: { id: r.groupId } })}
+                >
+                  <View style={styles.recurCardTop}>
+                    <Text style={styles.recurCardEmoji}>{grp?.emoji ?? "📦"}</Text>
+                    <Text style={[styles.recurCardDesc, { color: colors.text }]} numberOfLines={1}>
+                      {r.description}
+                    </Text>
+                  </View>
+                  <AmountText amount={r.amount} currency={grp?.currency ?? "USD"} style={[styles.recurCardAmt, { color: colors.primary }]} />
+                  <View style={styles.recurCardFooter}>
+                    <Text style={[styles.recurCardFreq, { color: colors.textTertiary }]}>{r.frequency}</Text>
+                    <Pressable
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      onPress={e => { e.stopPropagation(); updateRecurringExpense(r.id, { isActive: false }); }}
+                      style={[styles.recurPauseBtn, { backgroundColor: colors.warningLight }]}
+                    >
+                      <Feather name="pause" size={10} color={colors.warning} />
+                    </Pressable>
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+        </View>
+      )}
+
       <FlatList
         ref={listRef}
         data={filteredItems}
@@ -418,6 +467,20 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
   },
   filterCountText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+
+  recurStrip: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 10 },
+  recurStripLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6, paddingHorizontal: 16, marginBottom: 8 },
+  recurStripScroll: { paddingHorizontal: 14, gap: 10 },
+  recurCard: {
+    width: 140, padding: 10, borderRadius: 14, borderWidth: 1, gap: 4,
+  },
+  recurCardTop: { flexDirection: "row", alignItems: "center", gap: 6 },
+  recurCardEmoji: { fontSize: 14 },
+  recurCardDesc: { fontSize: 12, fontFamily: "Inter_600SemiBold", flex: 1 },
+  recurCardAmt: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  recurCardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recurCardFreq: { fontSize: 10, fontFamily: "Inter_400Regular", textTransform: "capitalize" },
+  recurPauseBtn: { width: 20, height: 20, borderRadius: 6, alignItems: "center", justifyContent: "center" },
 
   listContent: { padding: 16, gap: 2 },
   card: {
