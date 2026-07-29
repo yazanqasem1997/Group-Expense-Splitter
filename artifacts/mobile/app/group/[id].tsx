@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { exportGroupToPdf } from "@/utils/exportPdf";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
 
@@ -60,6 +61,8 @@ export default function GroupDetailScreen() {
   } = useApp();
 
   const [tab, setTab] = useState<Tab>("expenses");
+  const [recurringCollapsed, setRecurringCollapsed] = useState(false);
+  const [expensesCollapsed, setExpensesCollapsed] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
@@ -238,6 +241,10 @@ export default function GroupDetailScreen() {
         text: "Export to Excel",
         onPress: handleExport,
       },
+      {
+        text: "Export as PDF",
+        onPress: handleExportPdf,
+      },
       ...tripDatesBtn,
       ...endBtn,
       {
@@ -291,6 +298,25 @@ export default function GroupDetailScreen() {
       } : undefined,
     });
     setShowTripDatesModal(false);
+  }
+
+  async function handleExportPdf() {
+    if (!group) return;
+    try {
+      const groupMembers = group.memberIds
+        .map(mid => getMemberById(mid))
+        .filter((m): m is NonNullable<typeof m> => m != null);
+      await exportGroupToPdf({
+        group,
+        expenses: groupExpenses,
+        settlements: groupSettlements,
+        members: groupMembers,
+        getMemberById,
+        debts,
+      });
+    } catch (err) {
+      showAlert("PDF export failed", String(err));
+    }
   }
 
   function handleDeleteGroup() {
@@ -479,14 +505,22 @@ export default function GroupDetailScreen() {
     if (groupRecurring.length === 0) return null;
     return (
       <View style={[recurStyles.section, { backgroundColor: colors.surface }]}>
-        <View style={recurStyles.sectionHeader}>
+        <Pressable
+          style={recurStyles.sectionHeader}
+          onPress={() => { setRecurringCollapsed(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+        >
           <Feather name="repeat" size={15} color={colors.primary} />
           <Text style={[recurStyles.sectionTitle, { color: colors.text }]}>Scheduled</Text>
           <View style={[recurStyles.countBadge, { backgroundColor: colors.primaryLight }]}>
             <Text style={[recurStyles.countBadgeText, { color: colors.primary }]}>{groupRecurring.length}</Text>
           </View>
-        </View>
-        {groupRecurring.map(r => {
+          <Feather
+            name={recurringCollapsed ? "chevron-right" : "chevron-down"}
+            size={16}
+            color={colors.textTertiary}
+          />
+        </Pressable>
+        {!recurringCollapsed && groupRecurring.map(r => {
           const status = getRecurringStatus(r);
           const freqLabel = r.frequency === "custom"
             ? `Every ${r.customDays ?? 30}d`
@@ -1077,25 +1111,48 @@ export default function GroupDetailScreen() {
       </View>
 
       {tab === "expenses" ? (
-        <>
-          {renderRecurringSection()}
-          <FlatList
-            data={feedItems}
-            keyExtractor={item => item.id}
-            contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
-            ListEmptyComponent={<EmptyState icon="credit-card" title="No expenses yet" subtitle="Add your first expense to start splitting" />}
-            renderItem={({ item }) => item.type === "expense" ? renderExpenseItem(item.data) : renderSettlementItem(item.data)}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                tintColor={colors.primary}
-                colors={[colors.primary]}
-              />
-            }
-          />
-        </>
+        <FlatList
+          data={expensesCollapsed ? [] : feedItems}
+          keyExtractor={item => item.id}
+          contentContainerStyle={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
+          ListHeaderComponent={
+            <>
+              {renderRecurringSection()}
+              {/* Expenses section collapsible header */}
+              <Pressable
+                style={[styles.expensesSectionHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => { setExpensesCollapsed(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              >
+                <Feather name="credit-card" size={15} color={colors.primary} />
+                <Text style={[styles.expensesSectionTitle, { color: colors.text }]}>Payments</Text>
+                <View style={[styles.expensesSectionBadge, { backgroundColor: colors.primaryLight }]}>
+                  <Text style={[styles.expensesSectionBadgeText, { color: colors.primary }]}>{feedItems.length}</Text>
+                </View>
+                <Feather
+                  name={expensesCollapsed ? "chevron-right" : "chevron-down"}
+                  size={16}
+                  color={colors.textTertiary}
+                  style={{ marginLeft: "auto" }}
+                />
+              </Pressable>
+            </>
+          }
+          ListEmptyComponent={
+            expensesCollapsed ? null : (
+              <EmptyState icon="credit-card" title="No expenses yet" subtitle="Add your first expense to start splitting" />
+            )
+          }
+          renderItem={({ item }) => item.type === "expense" ? renderExpenseItem(item.data) : renderSettlementItem(item.data)}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        />
       ) : tab === "balances" ? (
         <View style={[styles.listContent, { paddingBottom: Platform.OS === "web" ? 134 : 100, flex: 1 }]}>
           {renderBalances()}
@@ -1314,9 +1371,9 @@ export default function GroupDetailScreen() {
               </View>
 
               {/* ── Nudge Campaign ─────────────────────────────────── */}
-              <View style={[styles.nudgeSection, { borderTopColor: colors.border }]}>
+              <View style={[styles.nudgeSection, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <View style={styles.nudgeSectionHeader}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.nudgeSectionTitle, { color: colors.text }]}>Settlement Nudge Campaign</Text>
                     <Text style={[styles.nudgeSectionSub, { color: colors.textTertiary }]}>
                       Automatically remind the group after the trip ends
@@ -1325,7 +1382,7 @@ export default function GroupDetailScreen() {
                   <Switch
                     value={nudgeActive}
                     onValueChange={v => { setNudgeActive(v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                    trackColor={{ false: colors.border, true: colors.primary }}
+                    trackColor={{ false: colors.switchOff, true: colors.primary }}
                     thumbColor="#fff"
                   />
                 </View>
@@ -1724,6 +1781,15 @@ const styles = StyleSheet.create({
   groupEmoji: { fontSize: 22 },
   groupName: { fontSize: 18, fontFamily: "Inter_700Bold" },
   archivedBadge: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  expensesSectionHeader: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginHorizontal: 16, marginBottom: 4, marginTop: 8,
+    paddingHorizontal: 14, paddingVertical: 11,
+    borderRadius: 12, borderWidth: 1,
+  },
+  expensesSectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1 },
+  expensesSectionBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  expensesSectionBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   statsBar: {
     flexDirection: "row", marginHorizontal: 16, marginTop: 12, borderRadius: 14, overflow: "hidden",
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
@@ -1876,7 +1942,7 @@ const styles = StyleSheet.create({
   settleSheetActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   settleSheetBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center", borderWidth: 1 },
   settleSheetBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  nudgeSection: { borderTopWidth: 1, marginTop: 20, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 8, gap: 14 },
+  nudgeSection: { borderWidth: 1, borderRadius: 14, marginTop: 16, padding: 16, gap: 14 },
   channelRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   channelBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",

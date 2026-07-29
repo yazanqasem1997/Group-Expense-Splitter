@@ -2373,6 +2373,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     groups.forEach(g => {
       const campaign = g.nudgeCampaign;
       if (!campaign?.isActive || !g.endDate) return;
+      if (g.isArchived || g.isEnded) return;
       if (campaign.nudgesSent >= campaign.maxNudges) return;
 
       const endDate = new Date(g.endDate + "T23:59:59");
