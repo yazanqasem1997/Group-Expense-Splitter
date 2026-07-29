@@ -14,6 +14,7 @@ import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChartSeries, LineChartSvg } from "@/components/LineChartSvg";
 import { Currency, CURRENCY_SYMBOLS, useApp } from "@/context/AppContext";
+import { CurrencyPickerModal } from "@/components/CurrencyPickerModal";
 import { useTheme } from "@/hooks/useTheme";
 
 type Period = "7D" | "1M" | "3M" | "All";
@@ -56,6 +57,7 @@ export default function AnalyticsScreen() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [displayCurrency, setDisplayCurrency] = useState<Currency | null>(null);
   const [chartView, setChartView] = useState<ChartView>("you");
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const chartWidth = width - 32;
@@ -224,14 +226,6 @@ export default function AnalyticsScreen() {
     return { thisTotal, lastTotal, diff, pct, monthLabel, lastMonthLabel };
   }, [expenses, selectedGroupId, currentUser.id, activeCurrency, hasRates]);
 
-  const availableCurrencies = useMemo(() => {
-    const set = new Set<Currency>();
-    set.add(defaultCurrency);
-    groups.forEach(g => set.add(g.currency));
-    return [...set];
-  }, [groups, defaultCurrency]);
-
-  const showCurrencyPicker = availableCurrencies.length > 1;
 
   const chartViews: { value: ChartView; label: string; icon: string }[] =
     selectedGroupId !== "all"
@@ -309,30 +303,26 @@ export default function AnalyticsScreen() {
         </View>
 
         {/* Currency toggle */}
-        {showCurrencyPicker && (
-          <View style={[styles.currencyRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Feather name="globe" size={13} color={colors.textTertiary} />
-            <Text style={[styles.currencyLabel, { color: colors.textTertiary }]}>View in</Text>
-            {availableCurrencies.map(c => {
-              const active = c === activeCurrency;
-              return (
-                <Pressable
-                  key={c}
-                  style={[styles.currencyChip, {
-                    backgroundColor: active ? colors.primary : colors.background,
-                    borderColor: active ? colors.primary : colors.border,
-                  }]}
-                  onPress={() => setDisplayCurrency(c)}
-                >
-                  <Text style={[styles.currencyChipText, { color: active ? "#fff" : colors.textSecondary }]}>
-                    {CURRENCY_SYMBOLS[c]}{c}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            {!hasRates && <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>· rates offline</Text>}
-          </View>
-        )}
+        <View style={[styles.currencyRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Feather name="globe" size={13} color={colors.textTertiary} />
+          <Text style={[styles.currencyLabel, { color: colors.textTertiary }]}>View in</Text>
+          <Pressable
+            style={[styles.currencyChip, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            onPress={() => setShowCurrencyModal(true)}
+          >
+            <Text style={[styles.currencyChipText, { color: "#fff" }]}>
+              {CURRENCY_SYMBOLS[activeCurrency]}{activeCurrency}
+            </Text>
+            <Feather name="chevron-down" size={11} color="#fff" style={{ marginLeft: 2 }} />
+          </Pressable>
+          {displayCurrency && displayCurrency !== defaultCurrency && (
+            <Pressable onPress={() => setDisplayCurrency(null)} style={styles.resetCurrencyBtn}>
+              <Feather name="x" size={12} color={colors.textTertiary} />
+              <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>Reset</Text>
+            </Pressable>
+          )}
+          {!hasRates && <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>· rates offline</Text>}
+        </View>
 
         {/* Monthly Summary */}
         <View style={[styles.monthlySummaryCard, { backgroundColor: colors.surface }]}>
@@ -492,6 +482,14 @@ export default function AnalyticsScreen() {
           </View>
         )}
       </ScrollView>
+
+      <CurrencyPickerModal
+        visible={showCurrencyModal}
+        onClose={() => setShowCurrencyModal(false)}
+        value={activeCurrency}
+        onChange={code => { setDisplayCurrency(code); setShowCurrencyModal(false); }}
+        title="View stats in"
+      />
     </View>
   );
 }
@@ -529,6 +527,7 @@ const styles = StyleSheet.create({
   currencyChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   currencyChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   ratesNote: { fontSize: 11, fontFamily: "Inter_400Regular", marginLeft: 2 },
+  resetCurrencyBtn: { flexDirection: "row", alignItems: "center", gap: 3, marginLeft: 4 },
   summaryRow: { flexDirection: "row", marginHorizontal: 16, gap: 10 },
   summaryCard: {
     flex: 1, borderRadius: 14, padding: 12, gap: 6, alignItems: "flex-start",

@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   LayoutAnimation,
@@ -126,6 +126,9 @@ export default function AccountScreen() {
   const [refreshingRates, setRefreshingRates] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
+  const [settingsQuery, setSettingsQuery] = useState("");
+  const searchRef = useRef<TextInput>(null);
+  const isSearchActive = settingsQuery.trim().length > 0;
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     scrollRegistry.register("account", () => {
@@ -203,6 +206,180 @@ export default function AccountScreen() {
   const hasRates = Object.keys(exchangeRates).length > 0;
   const selectedCurrencyInfo = CURRENCIES.find(c => c.code === defaultCurrency)!;
 
+  // ── Settings search catalog ──────────────────────────────────────────────
+  type SettingsItemType = "toggle" | "navigate" | "action";
+  interface SettingsItem {
+    id: string;
+    section: string;
+    label: string;
+    sub: string;
+    icon: string;
+    iconBg: string;
+    iconColor: string;
+    keywords: string[];
+    type: SettingsItemType;
+    value?: boolean;
+    displayValue?: string;
+    onAction: () => void;
+  }
+
+  const allSettingsItems = useMemo<SettingsItem[]>(() => [
+    // Notifications — Expenses
+    {
+      id: "notif-expense-added", section: "Notifications · Expenses",
+      label: "New expense", sub: "Someone adds an expense to your group",
+      icon: "plus-circle", iconBg: colors.primaryLight + "88", iconColor: colors.primary,
+      keywords: ["notification", "expense", "new", "added", "alert", "push"],
+      type: "toggle", value: notifPrefs.expenseAdded,
+      onAction: () => updateNotifPref("expenseAdded", !notifPrefs.expenseAdded),
+    },
+    {
+      id: "notif-expense-edited", section: "Notifications · Expenses",
+      label: "Expense edited", sub: "Someone modifies an existing expense",
+      icon: "edit-2", iconBg: colors.primaryLight + "88", iconColor: colors.primary,
+      keywords: ["notification", "expense", "edited", "modified", "alert"],
+      type: "toggle", value: notifPrefs.expenseEdited,
+      onAction: () => updateNotifPref("expenseEdited", !notifPrefs.expenseEdited),
+    },
+    {
+      id: "notif-expense-deleted", section: "Notifications · Expenses",
+      label: "Expense deleted", sub: "Someone removes an expense",
+      icon: "trash-2", iconBg: colors.dangerLight ?? colors.primaryLight + "88", iconColor: colors.danger,
+      keywords: ["notification", "expense", "deleted", "removed", "alert"],
+      type: "toggle", value: notifPrefs.expenseDeleted,
+      onAction: () => updateNotifPref("expenseDeleted", !notifPrefs.expenseDeleted),
+    },
+    // Notifications — Social
+    {
+      id: "notif-comment", section: "Notifications · Social",
+      label: "Comments", sub: "Someone comments on an expense",
+      icon: "message-square", iconBg: colors.accentTint + "88", iconColor: colors.accent,
+      keywords: ["notification", "comment", "social", "message", "chat"],
+      type: "toggle", value: notifPrefs.comment,
+      onAction: () => updateNotifPref("comment", !notifPrefs.comment),
+    },
+    {
+      id: "notif-reaction", section: "Notifications · Social",
+      label: "Reactions", sub: "Someone reacts to an expense",
+      icon: "heart", iconBg: colors.accentTint + "88", iconColor: colors.accent,
+      keywords: ["notification", "reaction", "emoji", "like", "social"],
+      type: "toggle", value: notifPrefs.reaction,
+      onAction: () => updateNotifPref("reaction", !notifPrefs.reaction),
+    },
+    // Notifications — Financial
+    {
+      id: "notif-settlement", section: "Notifications · Financial",
+      label: "Settlements", sub: "When a debt is paid or settled",
+      icon: "check-circle", iconBg: colors.tealTint + "88", iconColor: colors.teal,
+      keywords: ["notification", "settlement", "paid", "debt", "financial"],
+      type: "toggle", value: notifPrefs.settlement,
+      onAction: () => updateNotifPref("settlement", !notifPrefs.settlement),
+    },
+    {
+      id: "notif-invite", section: "Notifications · Financial",
+      label: "Group invites", sub: "When someone invites you to a group",
+      icon: "users", iconBg: colors.tealTint + "88", iconColor: colors.teal,
+      keywords: ["notification", "invite", "group", "invitation"],
+      type: "toggle", value: notifPrefs.invite,
+      onAction: () => updateNotifPref("invite", !notifPrefs.invite),
+    },
+    // Appearance
+    {
+      id: "dark-mode", section: "Appearance",
+      label: "Dark Mode", sub: "Switch between light and dark theme",
+      icon: "moon", iconBg: colors.primaryLight, iconColor: colors.primary,
+      keywords: ["dark", "light", "mode", "theme", "appearance", "night"],
+      type: "toggle", value: isDark,
+      onAction: toggleDark,
+    },
+    {
+      id: "theme", section: "Appearance",
+      label: "Theme", sub: `Currently: ${THEME_META[themeId]?.label ?? themeId}`,
+      icon: "droplet", iconBg: colors.primaryLight, iconColor: colors.primary,
+      keywords: ["theme", "color", "appearance", "style", "palette"],
+      type: "navigate", displayValue: THEME_META[themeId]?.label,
+      onAction: () => { setSettingsQuery(""); },
+    },
+    // Security
+    {
+      id: "biometric", section: "Security",
+      label: `${biometricType || "Biometric"} Lock`,
+      sub: !biometricAvailable ? "Not available on this device" : "Require biometrics to open the app",
+      icon: "lock", iconBg: colors.primaryLight, iconColor: colors.primary,
+      keywords: ["biometric", "lock", "security", "fingerprint", "face id", "touch id", "password"],
+      type: "toggle", value: biometricEnabled,
+      onAction: async () => {
+        if (!biometricAvailable && !biometricEnabled) return;
+        if (!biometricEnabled) {
+          const ok = await unlock();
+          if (ok) { await setBiometricEnabled(true); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
+        } else {
+          showAlert("Disable Lock", "Remove biometric protection?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Remove", style: "destructive", onPress: () => setBiometricEnabled(false) },
+          ]);
+        }
+      },
+    },
+    // Preferences
+    {
+      id: "simplify-debts", section: "Preferences",
+      label: "Simplify Debts", sub: "Merge payments across friends for fewer transactions",
+      icon: "git-merge", iconBg: colors.tealTint, iconColor: colors.teal,
+      keywords: ["simplify", "debts", "payments", "merge", "preferences", "balance"],
+      type: "toggle", value: simplifyDebtsEnabled,
+      onAction: toggleSimplifyDebts,
+    },
+    {
+      id: "currency", section: "Preferences",
+      label: "Default Currency", sub: "Currency used for totals and new groups",
+      icon: "globe", iconBg: colors.accentTint, iconColor: colors.accent,
+      keywords: ["currency", "money", "dollar", "euro", "default", "preferences"],
+      type: "navigate", displayValue: `${selectedCurrencyInfo?.flag ?? ""} ${defaultCurrency}`,
+      onAction: () => setShowCurrencyPicker(true),
+    },
+    // Exchange Rates
+    {
+      id: "exchange-rates", section: "Exchange Rates",
+      label: "Refresh Exchange Rates", sub: hasRates ? `Updated ${formatRatesUpdated()}` : "Rates not yet loaded",
+      icon: "refresh-cw", iconBg: colors.primaryLight, iconColor: colors.primary,
+      keywords: ["exchange", "rates", "refresh", "currency", "ecb", "live"],
+      type: "action",
+      onAction: handleRefreshRates,
+    },
+    // Account
+    {
+      id: "sign-out", section: "Account",
+      label: "Sign Out", sub: "Log out of SplitEasy",
+      icon: "log-out", iconBg: "#FDECEA", iconColor: "#E53935",
+      keywords: ["sign out", "logout", "log out", "account", "exit"],
+      type: "navigate",
+      onAction: () => showAlert("Sign Out", "Are you sure you want to sign out?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign Out", style: "destructive", onPress: async () => {
+          await AsyncStorage.removeItem("@spliteasy_logged_in");
+          router.replace("/");
+        }},
+      ]),
+    },
+  ], [
+    colors, isDark, toggleDark, themeId, biometricType, biometricAvailable, biometricEnabled,
+    simplifyDebtsEnabled, toggleSimplifyDebts, defaultCurrency, selectedCurrencyInfo,
+    notifPrefs, updateNotifPref, hasRates, unlock, setBiometricEnabled,
+    handleRefreshRates,
+  ]);
+
+  const searchResults = useMemo(() => {
+    if (!isSearchActive) return [];
+    const q = settingsQuery.toLowerCase().trim();
+    return allSettingsItems.filter(item =>
+      item.label.toLowerCase().includes(q) ||
+      item.sub.toLowerCase().includes(q) ||
+      item.section.toLowerCase().includes(q) ||
+      item.keywords.some(k => k.includes(q))
+    );
+  }, [allSettingsItems, settingsQuery, isSearchActive]);
+
   return (
     <ScrollView
       ref={scrollRef}
@@ -221,7 +398,108 @@ export default function AccountScreen() {
     >
       <View style={[styles.header, { paddingTop: topPad + 16 }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Account</Text>
+
+        {/* Search bar */}
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: isSearchActive ? colors.primary : "transparent" }]}>
+          <Feather name="search" size={16} color={isSearchActive ? colors.primary : colors.textTertiary} />
+          <TextInput
+            ref={searchRef}
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search settings…"
+            placeholderTextColor={colors.textTertiary}
+            value={settingsQuery}
+            onChangeText={setSettingsQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="never"
+          />
+          {isSearchActive && (
+            <Pressable onPress={() => { setSettingsQuery(""); searchRef.current?.blur(); }}>
+              <View style={[styles.clearBtn, { backgroundColor: colors.textTertiary + "30" }]}>
+                <Feather name="x" size={11} color={colors.textTertiary} />
+              </View>
+            </Pressable>
+          )}
+        </View>
       </View>
+
+      {/* ── Search results ─────────────────────────────────── */}
+      {isSearchActive ? (
+        <View style={styles.searchResultsWrap}>
+          {searchResults.length === 0 ? (
+            <View style={styles.searchEmpty}>
+              <Feather name="search" size={28} color={colors.textTertiary} />
+              <Text style={[styles.searchEmptyTitle, { color: colors.text }]}>No results</Text>
+              <Text style={[styles.searchEmptySub, { color: colors.textSecondary }]}>
+                Try "dark mode", "currency", or "notifications"
+              </Text>
+            </View>
+          ) : (
+            searchResults.map((item, idx) => {
+              const isLast = idx === searchResults.length - 1;
+              const prevSection = idx > 0 ? searchResults[idx - 1].section : null;
+              const showSection = item.section !== prevSection;
+              return (
+                <View key={item.id}>
+                  {showSection && (
+                    <Text style={[styles.searchSectionLabel, { color: colors.textSecondary }]}>
+                      {item.section}
+                    </Text>
+                  )}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.searchResultRow,
+                      {
+                        backgroundColor: colors.surface,
+                        opacity: pressed ? 0.85 : 1,
+                        borderBottomWidth: isLast || (searchResults[idx + 1]?.section !== item.section) ? 0 : StyleSheet.hairlineWidth,
+                        borderBottomColor: colors.border,
+                        borderTopLeftRadius: showSection ? 14 : 0,
+                        borderTopRightRadius: showSection ? 14 : 0,
+                        borderBottomLeftRadius: (isLast || searchResults[idx + 1]?.section !== item.section) ? 14 : 0,
+                        borderBottomRightRadius: (isLast || searchResults[idx + 1]?.section !== item.section) ? 14 : 0,
+                      },
+                    ]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); item.onAction(); }}
+                  >
+                    <View style={[styles.rowIcon, { backgroundColor: item.iconBg }]}>
+                      <Feather name={item.icon as any} size={18} color={item.iconColor} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.rowLabel, { color: item.id === "sign-out" ? "#E53935" : colors.text }]}>
+                        {item.label}
+                      </Text>
+                      <Text style={[styles.rowSub, { color: colors.textSecondary }]}>{item.sub}</Text>
+                    </View>
+                    {item.type === "toggle" && item.value !== undefined ? (
+                      <Switch
+                        value={item.value}
+                        onValueChange={() => item.onAction()}
+                        trackColor={{ false: colors.switchOff, true: item.iconColor }}
+                        thumbColor="#FFFFFF"
+                        ios_backgroundColor={colors.switchOff}
+                      />
+                    ) : item.displayValue ? (
+                      <Text style={[styles.rowValue, { color: colors.textSecondary }]}>{item.displayValue}</Text>
+                    ) : item.type === "action" ? (
+                      <View style={[styles.refreshBtn, { backgroundColor: item.iconBg }]}>
+                        <Text style={[styles.refreshBtnText, { color: item.iconColor }]}>Refresh</Text>
+                      </View>
+                    ) : (
+                      <Feather name="chevron-right" size={16} color={item.id === "sign-out" ? "#E5393580" : colors.textTertiary} />
+                    )}
+                  </Pressable>
+                </View>
+              );
+            })
+          )}
+        </View>
+      ) : null}
+
+      {/* ── Full settings (hidden while searching) ─────────── */}
+      {isSearchActive ? null : (
+        <>
 
       {/* Profile card */}
       <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
@@ -560,6 +838,9 @@ export default function AccountScreen() {
 
       <Text style={[styles.version, { color: colors.textTertiary }]}>SplitEasy v1.0.0</Text>
 
+        </>
+      )}
+
       <CurrencyPickerModal
         visible={showCurrencyPicker}
         onClose={() => setShowCurrencyPicker(false)}
@@ -723,6 +1004,32 @@ const styles = StyleSheet.create({
   },
   refreshBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   version: { textAlign: "center", fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 8 },
+  searchBar: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+    paddingHorizontal: 12, height: 42,
+    borderRadius: 12, borderWidth: 1.5,
+  },
+  searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  clearBtn: {
+    width: 18, height: 18, borderRadius: 9,
+    alignItems: "center", justifyContent: "center",
+  },
+  searchResultsWrap: { paddingHorizontal: 16, paddingTop: 8 },
+  searchSectionLabel: {
+    fontSize: 11, fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.7, textTransform: "uppercase",
+    marginTop: 16, marginBottom: 6, marginLeft: 4,
+  },
+  searchResultRow: {
+    flexDirection: "row", alignItems: "center",
+    paddingVertical: 13, paddingHorizontal: 16, gap: 12,
+  },
+  searchEmpty: {
+    alignItems: "center", paddingTop: 56, gap: 10,
+  },
+  searchEmptyTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
+  searchEmptySub: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 32 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
+import { MemberProfileSheet } from "@/components/MemberProfileSheet";
 import { AuditEntry, ExpenseComment, useApp } from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
@@ -36,6 +37,7 @@ export default function ExpenseDetailScreen() {
 
   const [commentText, setCommentText] = useState("");
   const [showAllReactions, setShowAllReactions] = useState(false);
+  const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
   const commentRef = useRef<TextInput>(null);
 
   const expense = expenses.find(e => e.id === id);
@@ -218,12 +220,20 @@ export default function ExpenseDetailScreen() {
           <View style={[styles.infoCard, { backgroundColor: colors.surface }]}>
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Paid by</Text>
-              <View style={styles.infoRight}>
+              <Pressable
+                style={styles.infoRight}
+                onPress={() => {
+                  if (expense.paidById) {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setProfileMemberId(expense.paidById);
+                  }
+                }}
+              >
                 <Avatar name={payer?.name ?? ""} color={payer?.avatarColor ?? "#ccc"} size={24} imageUri={payer?.photo} />
                 <Text style={[styles.infoValue, { color: colors.text }]}>
                   {youPaid ? "You" : payer?.name}
                 </Text>
-              </View>
+              </Pressable>
             </View>
             <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
             <View style={styles.infoRow}>
@@ -267,7 +277,14 @@ export default function ExpenseDetailScreen() {
               const lent = isPayer ? expense.amount - split.amount : 0;
 
               return (
-                <View key={split.memberId} style={[styles.splitCard, { backgroundColor: colors.surface }]}>
+                <Pressable
+                  key={split.memberId}
+                  style={({ pressed }) => [styles.splitCard, { backgroundColor: colors.surface, opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setProfileMemberId(split.memberId);
+                  }}
+                >
                   <Avatar name={member?.name ?? ""} color={member?.avatarColor ?? "#ccc"} size={40} imageUri={member?.photo} />
                   <View style={styles.splitBody}>
                     <Text style={[styles.splitName, { color: colors.text }]}>
@@ -291,7 +308,7 @@ export default function ExpenseDetailScreen() {
                       {isPayer && lent > 0 ? "gets back" : owes > 0 ? "owes" : "settled"}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -475,6 +492,13 @@ export default function ExpenseDetailScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <MemberProfileSheet
+        memberId={profileMemberId}
+        groupId={expense.groupId}
+        visible={profileMemberId !== null}
+        onClose={() => setProfileMemberId(null)}
+      />
     </View>
   );
 }
