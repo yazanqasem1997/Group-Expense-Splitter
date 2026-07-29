@@ -52,9 +52,30 @@ export default function NewGroupScreen() {
   const [pendingInvites, setPendingInvites] = useState<{ email: string; tempId: string }[]>([]);
   const [nameError, setNameError] = useState(false);
   const [membersError, setMembersError] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const selectedType = GROUP_TYPES.find(t => t.value === groupType)!;
+
+  function handleDismiss() {
+    const dirty =
+      name.trim().length > 0 ||
+      inviteEmail.trim().length > 0 ||
+      pendingInvites.length > 0 ||
+      selectedIds.length > 1;
+    if (dirty) {
+      showAlert(
+        "Discard new group?",
+        "You've started setting up a group but haven't created it yet.",
+        [
+          { text: "Keep editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: () => router.back() },
+        ]
+      );
+      return;
+    }
+    router.back();
+  }
 
   function toggleMember(id: string) {
     if (id === currentUser.id) return;
@@ -95,6 +116,7 @@ export default function NewGroupScreen() {
   }
 
   function handleCreate() {
+    if (creating) return;
     const realSelectedIds = selectedIds.filter(id => !id.startsWith("pending_"));
     const pendingCount = pendingInvites.filter(p => selectedIds.includes(p.tempId)).length;
     let hasError = false;
@@ -115,6 +137,7 @@ export default function NewGroupScreen() {
       return;
     }
 
+    setCreating(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const colorIndex = members.filter(m => !m.isCurrentUser).length;
@@ -148,13 +171,14 @@ export default function NewGroupScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.headerBg }]}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={handleDismiss} hitSlop={8}>
           <Feather name="x" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.text }]}>New Group</Text>
         <Pressable
-          style={[styles.createBtn, { backgroundColor: colors.primary }]}
+          style={[styles.createBtn, { backgroundColor: colors.primary, opacity: creating ? 0.6 : 1 }]}
           onPress={handleCreate}
+          disabled={creating}
         >
           <Text style={styles.createBtnText}>Create</Text>
         </Pressable>

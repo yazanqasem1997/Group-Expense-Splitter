@@ -5,29 +5,44 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import { ClerkLoaded, ClerkLoading, ClerkProvider } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { setBaseUrl } from "@workspace/api-client-react";
+
 import { AppAlert } from "@/components/AppAlert";
+import { AuthBridge } from "@/components/AuthBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { BiometricProvider, useBiometric } from "@/context/BiometricContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { ToastProvider } from "@/context/ToastContext";
-import {
-  defineBackgroundRecurringTask,
-  registerBackgroundRecurring,
-} from "@/services/backgroundRecurring";
 
-// Must be called at module level so TaskManager can find the task definition
-// before the React tree mounts (Expo requirement).
-defineBackgroundRecurringTask();
+// Expo bundles run outside the web proxy, so the generated API client needs an
+// absolute base URL to reach the API server. The deployment domain is injected
+// at build time and differs across dev/preview/prod.
+const domain = process.env.EXPO_PUBLIC_DOMAIN;
+if (domain) setBaseUrl(`https://${domain}`);
+
+// Clerk publishable key is a public value provisioned by Replit-managed Clerk.
+// It is safe to read (not a secret) and is never logged here.
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+// Empty in dev (Clerk hits dev FAPI directly), auto-populated in prod.
+const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 SplashScreen.preventAutoHideAsync();
 
@@ -58,6 +73,25 @@ const lockStyles = StyleSheet.create({
   btn: { marginTop: 12, backgroundColor: "#4B9FE0", paddingHorizontal: 40, paddingVertical: 14, borderRadius: 14 },
   btnText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#fff" },
 });
+
+function ClerkLoadingScreen() {
+  return (
+    <View style={lockStyles.container}>
+      <ActivityIndicator size="large" color="#4B9FE0" />
+    </View>
+  );
+}
+
+function ConfigError() {
+  return (
+    <View style={lockStyles.container}>
+      <Text style={lockStyles.title}>Auth is not configured</Text>
+      <Text style={lockStyles.sub}>
+        Missing Clerk publishable key. Please try again later.
+      </Text>
+    </View>
+  );
+}
 
 function RootLayoutNav() {
   const { isLocked } = useBiometric();
@@ -91,33 +125,47 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
-  useEffect(() => {
-    // Register background fetch after fonts settle so the app is fully booted.
-    // Gracefully no-ops when background fetch is unavailable (simulator, restricted).
-    registerBackgroundRecurring();
-  }, []);
-
   if (!fontsLoaded && !fontError) return null;
+
+  if (!publishableKey) {
+    return (
+      <SafeAreaProvider>
+        <ConfigError />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <ToastProvider>
-                <ThemeProvider>
-                  <AppProvider>
-                    <BiometricProvider>
-                      <RootLayoutNav />
-                    </BiometricProvider>
-                  </AppProvider>
-                  <AppAlert />
-                </ThemeProvider>
-              </ToastProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
+        <ClerkProvider
+          publishableKey={publishableKey}
+          tokenCache={tokenCache}
+          proxyUrl={proxyUrl}
+        >
+          <QueryClientProvider client={queryClient}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <KeyboardProvider>
+                <ToastProvider>
+                  <ThemeProvider>
+                    <ClerkLoading>
+                      <ClerkLoadingScreen />
+                    </ClerkLoading>
+                    <ClerkLoaded>
+                      <AuthBridge />
+                      <AppProvider>
+                        <BiometricProvider>
+                          <RootLayoutNav />
+                        </BiometricProvider>
+                      </AppProvider>
+                      <AppAlert />
+                    </ClerkLoaded>
+                  </ThemeProvider>
+                </ToastProvider>
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </QueryClientProvider>
+        </ClerkProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

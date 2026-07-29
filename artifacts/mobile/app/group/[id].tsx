@@ -35,7 +35,7 @@ import {
   RECURRING_FREQUENCY_DAYS, RECURRING_FREQUENCY_LABELS, Settlement,
   computeNextOccurrences, useApp,
 } from "@/context/AppContext";
-import { showAlert } from "@/hooks/alertStore";
+import { showActionSheet, showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
@@ -84,7 +84,10 @@ export default function GroupDetailScreen() {
     fromId: string; toId: string; fullAmount: number;
   } | null>(null);
   const [settleAmount, setSettleAmount] = useState("");
+  const [settleError, setSettleError] = useState("");
+  const [settleSubmitting, setSettleSubmitting] = useState(false);
   const [showSettleAllConfirm, setShowSettleAllConfirm] = useState(false);
+  const [settleAllSubmitting, setSettleAllSubmitting] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -92,6 +95,8 @@ export default function GroupDetailScreen() {
 
   // Trip dates modal state
   const [showTripDatesModal, setShowTripDatesModal] = useState(false);
+  const tripDatesSnapshot = useRef<string>("");
+  const [tripDatesError, setTripDatesError] = useState("");
   const [tripStartInput, setTripStartInput] = useState(""); // ISO YYYY-MM-DD
   const [tripEndInput, setTripEndInput] = useState("");   // ISO YYYY-MM-DD
   const [tripStartReminderInput, setTripStartReminderInput] = useState("2");
@@ -109,6 +114,8 @@ export default function GroupDetailScreen() {
 
   // Recurring expense management
   const [editingRecurring, setEditingRecurring] = useState<RecurringExpense | null>(null);
+  const editRecurSnapshot = useRef<string>("");
+  const [editRecurError, setEditRecurError] = useState("");
   const [editRecurDesc, setEditRecurDesc] = useState("");
   const [editRecurAmount, setEditRecurAmount] = useState("");
   const [editRecurFreq, setEditRecurFreq] = useState<RecurringFrequency>("monthly");
@@ -197,6 +204,15 @@ export default function GroupDetailScreen() {
     );
   }
 
+  // Group-type-aware noun so "Dates & Reminders" reads naturally for
+  // homes, couples, etc. instead of always saying "trip".
+  const periodNoun =
+    group.type === "trip" ? "trip"
+    : group.type === "home" ? "billing period"
+    : group.type === "couple" ? "period"
+    : "period";
+  const periodNounCap = periodNoun.charAt(0).toUpperCase() + periodNoun.slice(1);
+
   const totalExpenses = groupExpenses.reduce((s, e) => s + convertAmount(e.amount, e.currency, group.currency), 0);
   const myDebts = debts.filter(d => d.fromId === currentUser.id);
   const myCredits = debts.filter(d => d.toId === currentUser.id);
@@ -210,12 +226,13 @@ export default function GroupDetailScreen() {
 
   function handleGroupOptions() {
     if (!group) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const archiveLabel = group.isArchived ? "Unarchive Group" : "Archive Group";
-    const tripDatesBtn = [{ text: "Dates & Reminders", onPress: openTripDatesModal }];
     const isAdmin = (group.adminIds ?? []).includes(currentUser.id);
     const endBtn = !group.isEnded && isAdmin
       ? [{
           text: "End Group Period",
+          icon: "lock",
           onPress: () => {
             showAlert(
               "End Group Period",
@@ -232,27 +249,36 @@ export default function GroupDetailScreen() {
           },
         }]
       : [];
-    showAlert(group.name, "Group options", [
+    showActionSheet(group.name, [
       {
         text: "Add Expense",
+        icon: "plus-circle",
         onPress: () => router.push({ pathname: "/expense/new", params: { groupId: id } }),
       },
       {
+        text: "Dates & Reminders",
+        icon: "calendar",
+        onPress: openTripDatesModal,
+      },
+      {
         text: "QR Invite Code",
+        icon: "maximize",
         onPress: () => router.push({ pathname: "/group/qr/[id]", params: { id } }),
       },
       {
         text: "Export to Excel",
+        icon: "grid",
         onPress: handleExport,
       },
       {
         text: "Export as PDF",
+        icon: "file-text",
         onPress: handleExportPdf,
       },
-      ...tripDatesBtn,
       ...endBtn,
       {
         text: archiveLabel,
+        icon: group.isArchived ? "inbox" : "archive",
         onPress: () => {
           if (group.isArchived) unarchiveGroup(id);
           else archiveGroup(id);
@@ -260,11 +286,19 @@ export default function GroupDetailScreen() {
       },
       {
         text: "Delete Group",
+        icon: "trash-2",
         style: "destructive",
         onPress: handleDeleteGroup,
       },
       { text: "Cancel", style: "cancel" },
-    ]);
+    ], `${group.memberIds.length} members · ${groupExpenses.length} expenses`);
+  }
+
+  function tripDatesState() {
+    return JSON.stringify({
+      tripStartInput, tripEndInput, tripStartReminderInput, settleUpReminderInput,
+      reminderChannel, nudgeActive, nudgeStartDays, nudgeFreqDays, nudgeMaxNudges, nudgeTone,
+    });
   }
 
   function openTripDatesModal() {
@@ -280,14 +314,51 @@ export default function GroupDetailScreen() {
     setNudgeMaxNudges(String(campaign?.maxNudges ?? 5));
     setNudgeTone(campaign?.tone ?? "friendly");
     setActiveCalendar(null);
+    setTripDatesError("");
+    // Snapshot next tick after state applies is unreliable; store the source values.
+    tripDatesSnapshot.current = JSON.stringify({
+      tripStartInput: group?.startDate ?? "",
+      tripEndInput: group?.endDate ?? "",
+      tripStartReminderInput: String(group?.tripStartReminderDays ?? 2),
+      settleUpReminderInput: String(group?.settleUpReminderDays ?? 7),
+      reminderChannel: group?.reminderChannel ?? "push",
+      nudgeActive: campaign?.isActive ?? false,
+      nudgeStartDays: String(campaign?.startDaysAfterEnd ?? 3),
+      nudgeFreqDays: String(campaign?.frequencyDays ?? 7),
+      nudgeMaxNudges: String(campaign?.maxNudges ?? 5),
+      nudgeTone: campaign?.tone ?? "friendly",
+    });
     setShowTripDatesModal(true);
+  }
+
+  function closeTripDatesModal() {
+    if (tripDatesState() !== tripDatesSnapshot.current) {
+      showAlert(
+        "Discard changes?",
+        "You've changed the dates or reminders but haven't saved them yet.",
+        [
+          { text: "Keep editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: () => setShowTripDatesModal(false) },
+        ]
+      );
+      return;
+    }
+    setShowTripDatesModal(false);
   }
 
   function saveTripDates() {
     if (!group) return;
+    const start = tripStartInput.trim();
+    const end = tripEndInput.trim();
+    if (start && end && end < start) {
+      setTripDatesError("End date can't be before the start date.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    setTripDatesError("");
     updateGroup(id, {
-      startDate: tripStartInput.trim() || undefined,
-      endDate: tripEndInput.trim() || undefined,
+      startDate: start || undefined,
+      endDate: end || undefined,
       tripStartReminderDays: parseInt(tripStartReminderInput) || undefined,
       settleUpReminderDays: parseInt(settleUpReminderInput) || undefined,
       reminderChannel,
@@ -301,6 +372,7 @@ export default function GroupDetailScreen() {
         lastNudgeAt: group.nudgeCampaign?.lastNudgeAt,
       } : undefined,
     });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowTripDatesModal(false);
   }
 
@@ -324,14 +396,18 @@ export default function GroupDetailScreen() {
   }
 
   function handleDeleteGroup() {
-    showAlert("Delete Group", "This will delete all expenses in this group. Continue?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => { deleteGroup(id); router.back(); },
-      },
-    ]);
+    showAlert(
+      "Delete this group?",
+      `"${group?.name}" and all ${groupExpenses.length} expense${groupExpenses.length === 1 ? "" : "s"}, settlements and messages in it will be permanently deleted for everyone. This can't be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => { deleteGroup(id); router.back(); },
+        },
+      ]
+    );
   }
 
   async function handleExport() {
@@ -393,7 +469,9 @@ export default function GroupDetailScreen() {
   }
 
   function confirmSettleAll() {
-    if (!group) return;
+    if (!group || settleAllSubmitting) return;
+    if (debts.length === 0) { setShowSettleAllConfirm(false); return; }
+    setSettleAllSubmitting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addSettlements(
       debts.map(d => ({
@@ -405,17 +483,30 @@ export default function GroupDetailScreen() {
       }))
     );
     setShowSettleAllConfirm(false);
+    setSettleAllSubmitting(false);
   }
 
   function openSettleModal(fromId: string, toId: string, amount: number) {
     setSettleAmount(amount.toFixed(2));
+    setSettleError("");
+    setSettleSubmitting(false);
     setSettleModal({ fromId, toId, fullAmount: amount });
   }
 
   function confirmSettle() {
-    if (!settleModal || !group) return;
+    if (!settleModal || !group || settleSubmitting) return;
     const amount = parseFloat(settleAmount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (isNaN(amount) || amount <= 0) {
+      setSettleError("Enter an amount greater than 0");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    if (amount > settleModal.fullAmount + 0.001) {
+      setSettleError(`Can't exceed the ${formatAmount(settleModal.fullAmount, group.currency)} balance`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    setSettleSubmitting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addSettlement({
       groupId: id,
@@ -425,6 +516,7 @@ export default function GroupDetailScreen() {
       currency: group.currency,
     });
     setSettleModal(null);
+    setSettleSubmitting(false);
   }
 
   async function handleSendReminder(fromId: string, toId: string, amount: number) {
@@ -454,6 +546,13 @@ export default function GroupDetailScreen() {
     }
   }
 
+  function editRecurState() {
+    return JSON.stringify({
+      editRecurDesc, editRecurAmount, editRecurFreq, editRecurCustomDays,
+      editRecurDayOfWeek, editRecurTimeOfDay, editRecurEndType, editRecurEndCount, editRecurEndDate,
+    });
+  }
+
   function openEditRecurring(r: RecurringExpense) {
     setEditingRecurring(r);
     setEditRecurDesc(r.description);
@@ -465,12 +564,49 @@ export default function GroupDetailScreen() {
     setEditRecurEndType(r.endType ?? "never");
     setEditRecurEndCount(String(r.endCount ?? 10));
     setEditRecurEndDate(r.endDate ?? "");
+    setEditRecurError("");
+    editRecurSnapshot.current = JSON.stringify({
+      editRecurDesc: r.description,
+      editRecurAmount: String(r.amount),
+      editRecurFreq: r.frequency,
+      editRecurCustomDays: String(r.customDays ?? 30),
+      editRecurDayOfWeek: r.dayOfWeek,
+      editRecurTimeOfDay: r.timeOfDay ?? "09:00",
+      editRecurEndType: r.endType ?? "never",
+      editRecurEndCount: String(r.endCount ?? 10),
+      editRecurEndDate: r.endDate ?? "",
+    });
+  }
+
+  function closeEditRecurring() {
+    if (editingRecurring && editRecurState() !== editRecurSnapshot.current) {
+      showAlert(
+        "Discard changes?",
+        "Your edits to this recurring schedule haven't been saved.",
+        [
+          { text: "Keep editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: () => setEditingRecurring(null) },
+        ]
+      );
+      return;
+    }
+    setEditingRecurring(null);
   }
 
   function saveEditRecurring() {
     if (!editingRecurring) return;
     const amount = parseFloat(editRecurAmount);
-    if (!editRecurDesc.trim() || isNaN(amount) || amount <= 0) return;
+    if (!editRecurDesc.trim()) {
+      setEditRecurError("Add a description");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      setEditRecurError("Enter an amount greater than 0");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    setEditRecurError("");
     const days = editRecurFreq === "custom"
       ? Math.max(1, parseInt(editRecurCustomDays) || 30)
       : RECURRING_FREQUENCY_DAYS[editRecurFreq];
@@ -578,14 +714,18 @@ export default function GroupDetailScreen() {
                   style={[recurStyles.actionBtn, { backgroundColor: colors.dangerLight }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    showAlert(r.description, "Delete this recurring schedule?", [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: () => deleteRecurringExpense(r.id),
-                      },
-                    ]);
+                    showAlert(
+                      "Delete this schedule?",
+                      `"${r.description}" will stop repeating and be removed. Existing expenses it already created stay. You can undo this right after.`,
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: () => deleteRecurringExpense(r.id),
+                        },
+                      ]
+                    );
                   }}
                 >
                   <Feather name="trash-2" size={13} color={colors.danger} />
@@ -627,23 +767,29 @@ export default function GroupDetailScreen() {
         onPress={() => router.push({ pathname: "/expense/[id]", params: { id: expense.id } })}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          showAlert(expense.description, "What would you like to do?", [
+          showActionSheet(expense.description, [
             {
-              text: "Edit",
+              text: "Edit expense",
+              icon: "edit-2",
               onPress: () =>
                 router.push({ pathname: "/expense/new", params: { expenseId: expense.id, groupId: expense.groupId } }),
             },
             {
-              text: "Delete",
+              text: "Delete expense",
+              icon: "trash-2",
               style: "destructive",
               onPress: () =>
-                showAlert("Delete expense?", `"${expense.description}" will be removed for everyone.`, [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Delete", style: "destructive", onPress: () => deleteExpense(expense.id) },
-                ]),
+                showAlert(
+                  "Delete this expense?",
+                  `"${expense.description}" will be permanently removed for everyone in the group. You can undo this right after.`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Delete", style: "destructive", onPress: () => deleteExpense(expense.id) },
+                  ]
+                ),
             },
             { text: "Cancel", style: "cancel" },
-          ]);
+          ], formatAmount(expense.amount, expense.currency));
         }}
       >
         <CategoryIcon category={expense.category} size={40} />
@@ -717,18 +863,23 @@ export default function GroupDetailScreen() {
         ]}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          showAlert("Settlement", "Remove this settlement record?", [
+          showActionSheet("Settlement record", [
             {
-              text: "Delete",
+              text: "Remove payment",
+              icon: "trash-2",
               style: "destructive",
               onPress: () =>
-                showAlert("Delete settlement?", "This will restore the outstanding balance.", [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Delete", style: "destructive", onPress: () => deleteSettlement(settlement.id) },
-                ]),
+                showAlert(
+                  "Remove this payment?",
+                  "The outstanding balance between these members will be restored. You can undo this right after.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Remove", style: "destructive", onPress: () => deleteSettlement(settlement.id) },
+                  ]
+                ),
             },
             { text: "Cancel", style: "cancel" },
-          ]);
+          ], formatAmount(settlement.amount, group!.currency));
         }}
       >
         <View style={[styles.settleFeedIcon, { backgroundColor: colors.tealTint }]}>
@@ -992,7 +1143,7 @@ export default function GroupDetailScreen() {
               : "?"}
           </Text>
         ) : (
-          <Text style={[styles.tripDatesText, { color: colors.primary }]}>Set dates & reminders</Text>
+          <Text style={[styles.tripDatesText, { color: colors.primary }]}>Set {periodNoun} dates & reminders</Text>
         )}
         <Feather name="chevron-right" size={13} color={colors.primary} style={{ marginLeft: "auto" }} />
       </Pressable>
@@ -1253,26 +1404,52 @@ export default function GroupDetailScreen() {
         <Pressable style={styles.settleOverlay} onPress={() => setSettleModal(null)}>
           <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
             <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Record Payment</Text>
-            {settleModal && (
+            {settleModal && (() => {
+              const parsed = parseFloat(settleAmount);
+              const validAmt = !isNaN(parsed) && parsed > 0 ? Math.min(parsed, settleModal.fullAmount) : 0;
+              const remaining = Math.max(0, settleModal.fullAmount - validAmt);
+              const isFull = validAmt >= settleModal.fullAmount - 0.001;
+              return (
               <>
                 <Text style={[styles.settleSheetSub, { color: colors.textSecondary }]}>
                   {getMemberById(settleModal.fromId)?.name ?? "Unknown"} → {getMemberById(settleModal.toId)?.name ?? "Unknown"}
                   {"\n"}Full balance: {formatAmount(settleModal.fullAmount, group.currency)}
                 </Text>
                 <Text style={[styles.settleSheetLabel, { color: colors.textSecondary }]}>Amount to settle</Text>
-                <View style={[styles.settleAmtRow, { borderColor: colors.border, backgroundColor: colors.inputBg }]}>
+                <View style={[
+                  styles.settleAmtRow,
+                  { borderColor: settleError ? colors.danger : colors.border, backgroundColor: colors.inputBg },
+                ]}>
                   <Text style={[styles.settleAmtSymbol, { color: colors.textTertiary }]}>
                     {group.currency}
                   </Text>
                   <TextInput
                     style={[styles.settleAmtInput, { color: colors.text }]}
                     value={settleAmount}
-                    onChangeText={setSettleAmount}
+                    onChangeText={t => { setSettleAmount(t); if (settleError) setSettleError(""); }}
                     keyboardType="decimal-pad"
                     autoFocus
                     selectTextOnFocus
                   />
+                  <Pressable
+                    onPress={() => { setSettleAmount(settleModal.fullAmount.toFixed(2)); setSettleError(""); }}
+                    style={[styles.settleFullChip, { backgroundColor: colors.primaryLight }]}
+                    hitSlop={6}
+                  >
+                    <Text style={[styles.settleFullChipText, { color: colors.primary }]}>Full</Text>
+                  </Pressable>
                 </View>
+                {settleError ? (
+                  <Text style={[styles.settleErrorText, { color: colors.danger }]}>{settleError}</Text>
+                ) : (
+                  <Text style={[styles.settleRemainingText, { color: colors.textTertiary }]}>
+                    {isFull
+                      ? "Clears the balance in full"
+                      : validAmt > 0
+                      ? `${formatAmount(remaining, group.currency)} will remain outstanding`
+                      : "Partial payments are allowed"}
+                  </Text>
+                )}
                 <View style={styles.settleSheetActions}>
                   <Pressable
                     style={[styles.settleSheetBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
@@ -1281,14 +1458,18 @@ export default function GroupDetailScreen() {
                     <Text style={[styles.settleSheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                   </Pressable>
                   <Pressable
-                    style={[styles.settleSheetBtn, { backgroundColor: colors.primary }]}
+                    style={[styles.settleSheetBtn, { backgroundColor: colors.primary, opacity: settleSubmitting ? 0.6 : 1 }]}
                     onPress={confirmSettle}
+                    disabled={settleSubmitting}
                   >
-                    <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>Confirm</Text>
+                    <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>
+                      {validAmt > 0 ? `Record ${formatAmount(validAmt, group.currency)}` : "Record Payment"}
+                    </Text>
                   </Pressable>
                 </View>
               </>
-            )}
+              );
+            })()}
           </Pressable>
         </Pressable>
       </Modal>
@@ -1298,13 +1479,18 @@ export default function GroupDetailScreen() {
         visible={showTripDatesModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowTripDatesModal(false)}
+        onRequestClose={closeTripDatesModal}
       >
-        <Pressable style={styles.settleOverlay} onPress={() => setShowTripDatesModal(false)}>
+        <Pressable style={styles.settleOverlay} onPress={closeTripDatesModal}>
           <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0, height: "85%" }]} onPress={e => e.stopPropagation()}>
             <View style={[styles.tripModalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Dates & Reminders</Text>
-              <Pressable onPress={() => setShowTripDatesModal(false)}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Dates & Reminders</Text>
+                <Text style={[styles.tripModalSubtitle, { color: colors.textTertiary }]}>
+                  Set your {periodNoun} window and when to remind everyone
+                </Text>
+              </View>
+              <Pressable onPress={closeTripDatesModal} hitSlop={8}>
                 <Feather name="x" size={20} color={colors.textSecondary} />
               </Pressable>
             </View>
@@ -1335,24 +1521,31 @@ export default function GroupDetailScreen() {
                 onOpen={() => setActiveCalendar("end")}
               />
 
+              {tripDatesError ? (
+                <View style={[styles.tripDatesErrorBox, { backgroundColor: colors.dangerLight }]}>
+                  <Feather name="alert-circle" size={14} color={colors.danger} />
+                  <Text style={[styles.tripDatesErrorText, { color: colors.danger }]}>{tripDatesError}</Text>
+                </View>
+              ) : null}
+
               <View style={[styles.tripRemindersSection, { borderTopColor: colors.border }]}>
-                <Text style={[styles.tripModalLabel, { color: colors.textSecondary }]}>Remind me N days before trip starts</Text>
+                <Text style={[styles.tripModalLabel, { color: colors.textSecondary }]}>Days before {periodNoun} starts to remind me</Text>
                 <View style={[styles.tripModalInput, { borderColor: colors.border, backgroundColor: colors.inputBg, width: 80 }]}>
                   <TextInput
                     style={[styles.tripModalInputText, { color: colors.text, textAlign: "center" }]}
                     value={tripStartReminderInput}
-                    onChangeText={setTripStartReminderInput}
+                    onChangeText={t => setTripStartReminderInput(t.replace(/[^0-9]/g, ""))}
                     keyboardType="number-pad"
                     maxLength={2}
                   />
                 </View>
 
-                <Text style={[styles.tripModalLabel, { color: colors.textSecondary, marginTop: 12 }]}>Settle-up reminder every N days after trip ends</Text>
+                <Text style={[styles.tripModalLabel, { color: colors.textSecondary, marginTop: 12 }]}>Settle-up reminder every N days after {periodNoun} ends</Text>
                 <View style={[styles.tripModalInput, { borderColor: colors.border, backgroundColor: colors.inputBg, width: 80 }]}>
                   <TextInput
                     style={[styles.tripModalInputText, { color: colors.text, textAlign: "center" }]}
                     value={settleUpReminderInput}
-                    onChangeText={setSettleUpReminderInput}
+                    onChangeText={t => setSettleUpReminderInput(t.replace(/[^0-9]/g, ""))}
                     keyboardType="number-pad"
                     maxLength={2}
                   />
@@ -1394,7 +1587,7 @@ export default function GroupDetailScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.nudgeSectionTitle, { color: colors.text }]}>Settlement Nudge Campaign</Text>
                     <Text style={[styles.nudgeSectionSub, { color: colors.textTertiary }]}>
-                      Automatically remind the group after the trip ends
+                      Automatically remind the group after the {periodNoun} ends
                     </Text>
                   </View>
                   <Switch
@@ -1492,7 +1685,7 @@ export default function GroupDetailScreen() {
             <View style={[styles.settleSheetActions, { paddingHorizontal: 16, paddingBottom: 20 }]}>
               <Pressable
                 style={[styles.settleSheetBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
-                onPress={() => setShowTripDatesModal(false)}
+                onPress={closeTripDatesModal}
               >
                 <Text style={[styles.settleSheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
               </Pressable>
@@ -1550,8 +1743,9 @@ export default function GroupDetailScreen() {
                 <Text style={[styles.settleSheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[styles.settleSheetBtn, { backgroundColor: colors.teal, borderColor: colors.teal }]}
+                style={[styles.settleSheetBtn, { backgroundColor: colors.teal, borderColor: colors.teal, opacity: settleAllSubmitting ? 0.6 : 1 }]}
                 onPress={confirmSettleAll}
+                disabled={settleAllSubmitting}
               >
                 <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>Settle All</Text>
               </Pressable>
@@ -1573,13 +1767,13 @@ export default function GroupDetailScreen() {
         visible={!!editingRecurring}
         transparent
         animationType="slide"
-        onRequestClose={() => setEditingRecurring(null)}
+        onRequestClose={closeEditRecurring}
       >
-        <Pressable style={styles.settleOverlay} onPress={() => setEditingRecurring(null)}>
+        <Pressable style={styles.settleOverlay} onPress={closeEditRecurring}>
           <Pressable style={[styles.settleSheet, { backgroundColor: colors.surface, gap: 0, height: "85%" }]} onPress={e => e.stopPropagation()}>
             <View style={[styles.tripModalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.settleSheetTitle, { color: colors.text }]}>Edit Recurring</Text>
-              <Pressable onPress={() => setEditingRecurring(null)}>
+              <Pressable onPress={closeEditRecurring} hitSlop={8}>
                 <Feather name="x" size={20} color={colors.textSecondary} />
               </Pressable>
             </View>
@@ -1589,13 +1783,20 @@ export default function GroupDetailScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
+              {editRecurError ? (
+                <View style={[styles.tripDatesErrorBox, { backgroundColor: colors.dangerLight, marginTop: 0 }]}>
+                  <Feather name="alert-circle" size={14} color={colors.danger} />
+                  <Text style={[styles.tripDatesErrorText, { color: colors.danger }]}>{editRecurError}</Text>
+                </View>
+              ) : null}
+
               {/* Description */}
               <View>
                 <Text style={[recurStyles.editLabel, { color: colors.textSecondary }]}>Description</Text>
                 <TextInput
                   style={[recurStyles.editInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
                   value={editRecurDesc}
-                  onChangeText={setEditRecurDesc}
+                  onChangeText={t => { setEditRecurDesc(t); if (editRecurError) setEditRecurError(""); }}
                   placeholder="What's this for?"
                   placeholderTextColor={colors.textTertiary}
                 />
@@ -1607,7 +1808,7 @@ export default function GroupDetailScreen() {
                 <TextInput
                   style={[recurStyles.editInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
                   value={editRecurAmount}
-                  onChangeText={setEditRecurAmount}
+                  onChangeText={t => { setEditRecurAmount(t); if (editRecurError) setEditRecurError(""); }}
                   keyboardType="decimal-pad"
                   placeholder="0.00"
                   placeholderTextColor={colors.textTertiary}
@@ -1768,7 +1969,7 @@ export default function GroupDetailScreen() {
             <View style={[styles.settleSheetActions, { paddingHorizontal: 16, paddingBottom: 20 }]}>
               <Pressable
                 style={[styles.settleSheetBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
-                onPress={() => setEditingRecurring(null)}
+                onPress={closeEditRecurring}
               >
                 <Text style={[styles.settleSheetBtnText, { color: colors.textSecondary }]}>Cancel</Text>
               </Pressable>
@@ -1776,7 +1977,7 @@ export default function GroupDetailScreen() {
                 style={[styles.settleSheetBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
                 onPress={saveEditRecurring}
               >
-                <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>Save</Text>
+                <Text style={[styles.settleSheetBtnText, { color: "#fff" }]}>Save Changes</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -1937,8 +2138,14 @@ const styles = StyleSheet.create({
   tripDatesText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   tripModalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1,
+    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, gap: 12,
   },
+  tripModalSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  tripDatesErrorBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, marginTop: 16,
+  },
+  tripDatesErrorText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
   tripModalBody: { paddingHorizontal: 20, paddingTop: 16, flex: 1 },
   tripModalLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 },
   tripModalInput: {
@@ -1958,6 +2165,10 @@ const styles = StyleSheet.create({
   },
   settleAmtSymbol: { fontSize: 15, fontFamily: "Inter_500Medium" },
   settleAmtInput: { flex: 1, fontSize: 24, fontFamily: "Inter_700Bold" },
+  settleFullChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  settleFullChipText: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  settleErrorText: { fontSize: 12, fontFamily: "Inter_500Medium", marginTop: 6 },
+  settleRemainingText: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6 },
   settleSheetActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   settleSheetBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center", borderWidth: 1 },
   settleSheetBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },

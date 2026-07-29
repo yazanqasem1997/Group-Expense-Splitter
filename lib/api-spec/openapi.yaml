@@ -3,13 +3,29 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: SplitEasy production backend API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: Current user and bootstrap
+  - name: groups
+    description: Group, membership and invitation operations
+  - name: expenses
+    description: Expense, split and comment operations
+  - name: settlements
+    description: Settlement operations
+  - name: recurring
+    description: Recurring expense schedule operations
+  - name: messages
+    description: Group message operations
+  - name: notifications
+    description: Notification and device token operations
+  - name: imports
+    description: Bulk import / bootstrap operations
 paths:
   /healthz:
     get:
@@ -24,7 +40,883 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [users]
+      summary: Get the authenticated user profile (provisioning it if needed)
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      operationId: updateCurrentUser
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /me/bootstrap:
+    get:
+      operationId: bootstrap
+      tags: [users]
+      summary: Fetch the full application snapshot for the authenticated user
+      responses:
+        "200":
+          description: Full snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bootstrap"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /imports:
+    post:
+      operationId: importSnapshot
+      tags: [imports]
+      summary: Bulk import a client snapshot (idempotent via Idempotency-Key)
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportInput"
+      responses:
+        "201":
+          description: Import job result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups:
+    get:
+      operationId: listGroups
+      tags: [groups]
+      responses:
+        "200":
+          description: Groups the user belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupInput"
+      responses:
+        "201":
+          description: Created group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups/{groupId}:
+    get:
+      operationId: getGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupUpdate"
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/members:
+    get:
+      operationId: listGroupMembers
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupMember"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: addGroupMember
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMemberInput"
+      responses:
+        "201":
+          description: Added member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMember"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/members/{memberKey}:
+    patch:
+      operationId: updateGroupMember
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isAdmin]
+              properties:
+                isAdmin:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMember"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: removeGroupMember
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberKey"
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /groups/{groupId}/invitations:
+    get:
+      operationId: listGroupInvitations
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createGroupInvitation
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupInvitationInput"
+      responses:
+        "201":
+          description: Created invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupInvitation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      responses:
+        "200":
+          description: Accepted invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /invitations/{token}/decline:
+    post:
+      operationId: declineInvitation
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      responses:
+        "200":
+          description: Declined invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/expenses:
+    get:
+      operationId: listExpenses
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Expense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseInput"
+      responses:
+        "201":
+          description: Created expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /expenses/{expenseId}:
+    get:
+      operationId: getExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      responses:
+        "200":
+          description: Expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseUpdate"
+      responses:
+        "200":
+          description: Updated expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /expenses/{expenseId}/comments:
+    post:
+      operationId: addExpenseComment
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseCommentInput"
+      responses:
+        "201":
+          description: Added comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseComment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/settlements:
+    get:
+      operationId: listSettlements
+      tags: [settlements]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Settlements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Settlement"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createSettlement
+      tags: [settlements]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettlementInput"
+      responses:
+        "201":
+          description: Created settlement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settlement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /settlements/{settlementId}:
+    delete:
+      operationId: deleteSettlement
+      tags: [settlements]
+      parameters:
+        - $ref: "#/components/parameters/SettlementId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /recurring:
+    get:
+      operationId: listAllRecurring
+      tags: [recurring]
+      summary: List all recurring schedules across the user's groups
+      responses:
+        "200":
+          description: Recurring schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringExpense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /recurring/run:
+    post:
+      operationId: runRecurring
+      tags: [recurring]
+      summary: Materialize all due recurring schedules for the user (idempotent)
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringRunResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups/{groupId}/recurring:
+    get:
+      operationId: listGroupRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Recurring schedules for the group
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringExpense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecurringInput"
+      responses:
+        "201":
+          description: Created recurring schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringExpense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /recurring/{recurringId}:
+    patch:
+      operationId: updateRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/RecurringId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecurringUpdate"
+      responses:
+        "200":
+          description: Updated recurring schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringExpense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/RecurringId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/messages:
+    get:
+      operationId: listGroupMessages
+      tags: [messages]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupMessage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createGroupMessage
+      tags: [messages]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMessageInput"
+      responses:
+        "201":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMessage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      responses:
+        "200":
+          description: Count marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutationCount"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/{notificationId}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      parameters:
+        - $ref: "#/components/parameters/NotificationId"
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /device-tokens:
+    post:
+      operationId: registerDeviceToken
+      tags: [notifications]
+      summary: Register (upsert) a push device token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenInput"
+      responses:
+        "201":
+          description: Registered device token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceToken"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /device-tokens/{token}:
+    delete:
+      operationId: deleteDeviceToken
+      tags: [notifications]
+      parameters:
+        - $ref: "#/components/parameters/DeviceTokenParam"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-supplied key that makes a write request replay-safe.
+      schema:
+        type: string
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+    MemberKey:
+      name: memberKey
+      in: path
+      required: true
+      schema:
+        type: string
+    ExpenseId:
+      name: expenseId
+      in: path
+      required: true
+      schema:
+        type: string
+    SettlementId:
+      name: settlementId
+      in: path
+      required: true
+      schema:
+        type: string
+    RecurringId:
+      name: recurringId
+      in: path
+      required: true
+      schema:
+        type: string
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+    InviteToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    DeviceTokenParam:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +926,921 @@ components:
       required:
         - status
 
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MutationCount:
+      type: object
+      properties:
+        count:
+          type: integer
+      required:
+        - count
+
+    User:
+      type: object
+      required:
+        - id
+        - clerkUserId
+        - name
+        - avatarColor
+        - defaultCurrency
+        - createdAt
+      properties:
+        id:
+          type: string
+        clerkUserId:
+          type: string
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+        defaultCurrency:
+          type: string
+        notifPrefs:
+          type: ["object", "null"]
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        phone:
+          type: string
+        avatarColor:
+          type: string
+        photo:
+          type: string
+        defaultCurrency:
+          type: string
+        notifPrefs:
+          type: object
+          additionalProperties: true
+
+    SplitDetail:
+      type: object
+      required:
+        - memberKey
+        - amount
+      properties:
+        memberKey:
+          type: string
+        amount:
+          type: number
+        percentage:
+          type: ["number", "null"]
+        paid:
+          type: ["number", "null"]
+
+    Group:
+      type: object
+      required:
+        - id
+        - name
+        - emoji
+        - currency
+        - type
+        - createdByUserId
+        - isArchived
+        - isEnded
+        - createdAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        createdByUserId:
+          type: string
+        isArchived:
+          type: boolean
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
+        isEnded:
+          type: boolean
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        reminderDays:
+          type: ["integer", "null"]
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        tripStartReminderDays:
+          type: ["integer", "null"]
+        settleUpReminderDays:
+          type: ["integer", "null"]
+        reminderChannel:
+          type: ["string", "null"]
+        nudgeCampaign:
+          type: ["object", "null"]
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GroupInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        reminderDays:
+          type: integer
+        tripStartReminderDays:
+          type: integer
+        settleUpReminderDays:
+          type: integer
+        reminderChannel:
+          type: string
+        nudgeCampaign:
+          type: object
+          additionalProperties: true
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMemberInput"
+
+    GroupUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        isArchived:
+          type: boolean
+        isEnded:
+          type: boolean
+        reminderDays:
+          type: integer
+        startDate:
+          type: string
+        endDate:
+          type: string
+        tripStartReminderDays:
+          type: integer
+        settleUpReminderDays:
+          type: integer
+        reminderChannel:
+          type: string
+        nudgeCampaign:
+          type: object
+          additionalProperties: true
+
+    GroupMember:
+      type: object
+      required:
+        - id
+        - groupId
+        - memberKey
+        - name
+        - avatarColor
+        - isAdmin
+        - isPending
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        userId:
+          type: ["string", "null"]
+        memberKey:
+          type: string
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+        isAdmin:
+          type: boolean
+        isPending:
+          type: boolean
+        joinedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    GroupMemberInput:
+      type: object
+      required:
+        - name
+      properties:
+        memberKey:
+          type: string
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        phone:
+          type: string
+        avatarColor:
+          type: string
+        photo:
+          type: string
+        isAdmin:
+          type: boolean
+        isPending:
+          type: boolean
+
+    GroupInvitation:
+      type: object
+      required:
+        - id
+        - groupId
+        - inviterUserId
+        - invitedEmail
+        - status
+        - token
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        inviterUserId:
+          type: string
+        invitedEmail:
+          type: string
+        invitedName:
+          type: ["string", "null"]
+        invitedMemberKey:
+          type: ["string", "null"]
+        status:
+          type: string
+        token:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GroupInvitationInput:
+      type: object
+      required:
+        - invitedEmail
+      properties:
+        invitedEmail:
+          type: string
+          minLength: 1
+        invitedName:
+          type: string
+        invitedMemberKey:
+          type: string
+
+    Expense:
+      type: object
+      required:
+        - id
+        - groupId
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splitType
+        - category
+        - splits
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        description:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        category:
+          type: string
+        notes:
+          type: ["string", "null"]
+        addedByUserId:
+          type: ["string", "null"]
+        recurringId:
+          type: ["string", "null"]
+        reactions:
+          type: ["object", "null"]
+          additionalProperties: true
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseComment"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ExpenseInput:
+      type: object
+      required:
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splits
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        category:
+          type: string
+        notes:
+          type: string
+        reactions:
+          type: object
+          additionalProperties: true
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+
+    ExpenseUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        category:
+          type: string
+        notes:
+          type: string
+        reactions:
+          type: object
+          additionalProperties: true
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+
+    ExpenseComment:
+      type: object
+      required:
+        - id
+        - expenseId
+        - memberKey
+        - text
+        - createdAt
+      properties:
+        id:
+          type: string
+        expenseId:
+          type: string
+        memberKey:
+          type: string
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ExpenseCommentInput:
+      type: object
+      required:
+        - memberKey
+        - text
+      properties:
+        memberKey:
+          type: string
+        text:
+          type: string
+          minLength: 1
+
+    Settlement:
+      type: object
+      required:
+        - id
+        - groupId
+        - fromMemberKey
+        - toMemberKey
+        - amount
+        - currency
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        fromMemberKey:
+          type: string
+        toMemberKey:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        note:
+          type: ["string", "null"]
+        recordedByUserId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    SettlementInput:
+      type: object
+      required:
+        - fromMemberKey
+        - toMemberKey
+        - amount
+        - currency
+      properties:
+        fromMemberKey:
+          type: string
+        toMemberKey:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        note:
+          type: string
+
+    RecurringExpense:
+      type: object
+      required:
+        - id
+        - groupId
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splitType
+        - splits
+        - category
+        - frequency
+        - endType
+        - occurrenceCount
+        - nextDueAt
+        - isActive
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        description:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        category:
+          type: string
+        frequency:
+          type: string
+        customDays:
+          type: ["integer", "null"]
+        dayOfWeek:
+          type: ["integer", "null"]
+        timeOfDay:
+          type: ["string", "null"]
+        endType:
+          type: string
+        endCount:
+          type: ["integer", "null"]
+        endDate:
+          type: ["string", "null"]
+        occurrenceCount:
+          type: integer
+        nextDueAt:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+        lastRunAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RecurringInput:
+      type: object
+      required:
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splits
+        - frequency
+        - nextDueAt
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        category:
+          type: string
+        frequency:
+          type: string
+        customDays:
+          type: integer
+        dayOfWeek:
+          type: integer
+        timeOfDay:
+          type: string
+        endType:
+          type: string
+        endCount:
+          type: integer
+        endDate:
+          type: string
+        nextDueAt:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+
+    RecurringUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        category:
+          type: string
+        frequency:
+          type: string
+        customDays:
+          type: integer
+        dayOfWeek:
+          type: integer
+        timeOfDay:
+          type: string
+        endType:
+          type: string
+        endCount:
+          type: integer
+        endDate:
+          type: string
+        nextDueAt:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+
+    RecurringRunResult:
+      type: object
+      required:
+        - generatedExpenseIds
+        - firedCount
+      properties:
+        firedCount:
+          type: integer
+        generatedExpenseIds:
+          type: array
+          items:
+            type: string
+
+    GroupMessage:
+      type: object
+      required:
+        - id
+        - groupId
+        - memberKey
+        - text
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        memberKey:
+          type: string
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GroupMessageInput:
+      type: object
+      required:
+        - memberKey
+        - text
+      properties:
+        memberKey:
+          type: string
+        text:
+          type: string
+          minLength: 1
+
+    Notification:
+      type: object
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - body
+        - read
+        - createdAt
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+        groupId:
+          type: ["string", "null"]
+        expenseId:
+          type: ["string", "null"]
+        title:
+          type: string
+        body:
+          type: string
+        tone:
+          type: ["string", "null"]
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    DeviceToken:
+      type: object
+      required:
+        - id
+        - userId
+        - token
+        - platform
+        - createdAt
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        token:
+          type: string
+        platform:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    DeviceTokenInput:
+      type: object
+      required:
+        - token
+        - platform
+      properties:
+        token:
+          type: string
+          minLength: 1
+        platform:
+          type: string
+          minLength: 1
+
+    ImportGroup:
+      type: object
+      required:
+        - name
+      properties:
+        clientId:
+          type: string
+        name:
+          type: string
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        reminderDays:
+          type: integer
+        tripStartReminderDays:
+          type: integer
+        settleUpReminderDays:
+          type: integer
+        reminderChannel:
+          type: string
+        nudgeCampaign:
+          type: object
+          additionalProperties: true
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMemberInput"
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseInput"
+        settlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/SettlementInput"
+        recurring:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecurringInput"
+
+    ImportInput:
+      type: object
+      required:
+        - groups
+      properties:
+        source:
+          type: string
+        defaultCurrency:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportGroup"
+
+    ImportJob:
+      type: object
+      required:
+        - id
+        - userId
+        - source
+        - status
+        - groupsCreated
+        - expensesCreated
+        - createdAt
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        counts:
+          type: ["object", "null"]
+          additionalProperties: true
+        groupsCreated:
+          type: integer
+        expensesCreated:
+          type: integer
+        error:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    Bootstrap:
+      type: object
+      required:
+        - user
+        - groups
+        - members
+        - expenses
+        - settlements
+        - recurring
+        - invitations
+        - notifications
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMember"
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Expense"
+        settlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/Settlement"
+        recurring:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecurringExpense"
+        invitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupInvitation"
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"

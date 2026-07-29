@@ -30,7 +30,7 @@ import {
 } from "@/context/AppContext";
 import { CurrencyPickerModal } from "@/components/CurrencyPickerModal";
 import { DatePickerField } from "@/components/DatePickerField";
-import { showAlert } from "@/hooks/alertStore";
+import { showActionSheet, showAlert } from "@/hooks/alertStore";
 import { useTheme } from "@/hooks/useTheme";
 import { parseReceipt, suggestCategory } from "@/services/ai";
 
@@ -105,9 +105,30 @@ export default function NewExpenseScreen() {
     existingExpense?.currency ?? group?.currency ?? "USD"
   );
   const [showExpCurrencyPicker, setShowExpCurrencyPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const amount = parseFloat(amountStr) || 0;
+
+  function handleDismiss() {
+    const dirty = isEditing
+      ? (description.trim() !== (existingExpense?.description ?? "") || amount !== (existingExpense?.amount ?? 0))
+      : (description.trim().length > 0 || amountStr.trim().length > 0);
+    if (dirty) {
+      showAlert(
+        "Discard this expense?",
+        isEditing
+          ? "Your changes to this expense haven't been saved."
+          : "You've started adding an expense but haven't saved it.",
+        [
+          { text: "Keep editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: () => router.back() },
+        ]
+      );
+      return;
+    }
+    router.back();
+  }
 
   const nextOccurrences = useMemo(() => {
     if (!isRecurring) return [];
@@ -265,11 +286,11 @@ export default function NewExpenseScreen() {
   }
 
   function handleScanReceipt() {
-    showAlert("Scan Receipt", "How would you like to add a photo?", [
-      { text: "Take Photo", onPress: pickFromCamera },
-      { text: "Choose from Library", onPress: pickFromLibrary },
+    showActionSheet("Scan Receipt", [
+      { text: "Take Photo", icon: "camera", onPress: pickFromCamera },
+      { text: "Choose from Library", icon: "image", onPress: pickFromLibrary },
       { text: "Cancel", style: "cancel" },
-    ]);
+    ], "Add a photo to auto-fill the amount and merchant");
   }
 
   function handleAddCustomCategory() {
@@ -284,19 +305,24 @@ export default function NewExpenseScreen() {
   }
 
   function handleSave() {
+    if (saving) return;
     let hasError = false;
     if (!description.trim()) { setDescError(true); hasError = true; }
     if (amount <= 0) { setAmountError(true); hasError = true; }
-    if (hasError) return;
+    if (hasError) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     if (!group) return;
     if (splitValid === false) {
       const msg =
         splitType === "exact"
-          ? `Amounts must add up to ${currencySymbol}${amount.toFixed(2)}`
-          : "Percentages must add up to 100%";
+          ? `Amounts must add up to ${currencySymbol}${amount.toFixed(2)}. They currently total ${currencySymbol}${splitTotal.toFixed(2)}.`
+          : "Percentages must add up to 100%.";
       showAlert("Split doesn't balance", msg);
       return;
     }
+    setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (isEditing && existingExpense) {
       updateExpense(existingExpense.id, {
@@ -371,7 +397,7 @@ export default function NewExpenseScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.headerBg }]}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={handleDismiss} hitSlop={8}>
           <Feather name="x" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.text }]}>{isEditing ? "Edit Expense" : "Add Expense"}</Text>
@@ -386,7 +412,11 @@ export default function NewExpenseScreen() {
               : <Feather name="camera" size={17} color={colors.primary} />
             }
           </Pressable>
-          <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSave}>
+          <Pressable
+            style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
+            onPress={handleSave}
+            disabled={saving}
+          >
             <Text style={styles.saveBtnText}>Save</Text>
           </Pressable>
         </View>

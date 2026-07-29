@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
 
   FlatList,
@@ -46,6 +46,9 @@ export default function RecurringScreen() {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const formSnapshot = useRef<string>("");
 
   const [form, setForm] = useState({
     groupId: groups[0]?.id ?? "",
@@ -76,11 +79,22 @@ export default function RecurringScreen() {
 
   function openAdd() {
     resetForm();
+    setFormError("");
+    setSaving(false);
+    formSnapshot.current = JSON.stringify({
+      groupId: groups[0]?.id ?? "",
+      description: "",
+      amount: "",
+      paidById: currentUser.id,
+      frequency: "monthly",
+      category: "utilities",
+      nextDueAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    });
     setShowAddModal(true);
   }
 
   function openEdit(r: RecurringExpense) {
-    setForm({
+    const next = {
       groupId: r.groupId,
       description: r.description,
       amount: String(r.amount),
@@ -88,17 +102,53 @@ export default function RecurringScreen() {
       frequency: r.frequency,
       category: r.category,
       nextDueAt: r.nextDueAt.split("T")[0],
-    });
+    };
+    setForm(next);
     setEditId(r.id);
+    setFormError("");
+    setSaving(false);
+    formSnapshot.current = JSON.stringify(next);
     setShowAddModal(true);
   }
 
+  function closeModal() {
+    if (JSON.stringify(form) !== formSnapshot.current) {
+      showAlert(
+        "Discard changes?",
+        editId
+          ? "Your edits to this recurring expense haven't been saved."
+          : "You've started setting up a recurring expense but haven't saved it.",
+        [
+          { text: "Keep editing", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: () => setShowAddModal(false) },
+        ]
+      );
+      return;
+    }
+    setShowAddModal(false);
+  }
+
   function handleSave() {
-    if (!form.description.trim()) return;
+    if (saving) return;
+    if (!form.description.trim()) {
+      setFormError("Add a description");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     const amount = parseFloat(form.amount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (isNaN(amount) || amount <= 0) {
+      setFormError("Enter an amount greater than 0");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     const group = getGroupById(form.groupId);
-    if (!group) return;
+    if (!group) {
+      setFormError("Pick a group");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    setFormError("");
+    setSaving(true);
 
     const splits = group.memberIds.map(mid => ({
       memberId: mid,
@@ -139,13 +189,21 @@ export default function RecurringScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowAddModal(false);
+    setSaving(false);
   }
 
   function handleDelete(id: string) {
-    showAlert("Delete Recurring", "Stop and delete this recurring expense?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => { deleteRecurringExpense(id); } },
-    ]);
+    const target = recurringExpenses.find(r => r.id === id);
+    showAlert(
+      "Delete this schedule?",
+      target
+        ? `"${target.description}" will stop repeating and be removed. Expenses it already created stay. You can undo this right after.`
+        : "This recurring expense will stop and be removed. You can undo this right after.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => { deleteRecurringExpense(id); } },
+      ]
+    );
   }
 
   function handleCheck() {
@@ -290,27 +348,34 @@ export default function RecurringScreen() {
         renderItem={renderItem}
       />
 
-      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
+      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeModal}>
         <View style={[styles.modal, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Pressable onPress={() => setShowAddModal(false)}>
+            <Pressable onPress={closeModal} hitSlop={8}>
               <Feather name="x" size={22} color={colors.textSecondary} />
             </Pressable>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editId ? "Edit Recurring" : "New Recurring Expense"}
             </Text>
-            <Pressable onPress={handleSave}>
+            <Pressable onPress={handleSave} disabled={saving} style={{ opacity: saving ? 0.5 : 1 }}>
               <Text style={[styles.modalSave, { color: colors.primary }]}>Save</Text>
             </Pressable>
           </View>
 
           <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            {formError ? (
+              <View style={[styles.formErrorBox, { backgroundColor: colors.dangerLight }]}>
+                <Feather name="alert-circle" size={14} color={colors.danger} />
+                <Text style={[styles.formErrorText, { color: colors.danger }]}>{formError}</Text>
+              </View>
+            ) : null}
+
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Description</Text>
             <View style={[styles.fieldInput, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
               <TextInput
                 style={[styles.fieldText, { color: colors.text }]}
                 value={form.description}
-                onChangeText={t => setForm(f => ({ ...f, description: t }))}
+                onChangeText={t => { setForm(f => ({ ...f, description: t })); if (formError) setFormError(""); }}
                 placeholder="e.g. Monthly Rent"
                 placeholderTextColor={colors.textTertiary}
                 autoCapitalize="words"
@@ -325,7 +390,7 @@ export default function RecurringScreen() {
               <TextInput
                 style={[styles.fieldText, { color: colors.text }]}
                 value={form.amount}
-                onChangeText={t => setForm(f => ({ ...f, amount: t }))}
+                onChangeText={t => { setForm(f => ({ ...f, amount: t })); if (formError) setFormError(""); }}
                 placeholder="0.00"
                 placeholderTextColor={colors.textTertiary}
                 keyboardType="decimal-pad"
@@ -423,8 +488,9 @@ export default function RecurringScreen() {
             </View>
 
             <Pressable
-              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
               onPress={handleSave}
+              disabled={saving}
             >
               <Text style={styles.saveBtnText}>{editId ? "Save Changes" : "Create Recurring Expense"}</Text>
             </Pressable>
@@ -437,6 +503,11 @@ export default function RecurringScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  formErrorBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, marginBottom: 12,
+  },
+  formErrorText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
   header: {
     flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 14, gap: 12,
     shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,

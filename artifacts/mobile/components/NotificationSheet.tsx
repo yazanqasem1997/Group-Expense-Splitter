@@ -49,16 +49,13 @@ export function NotificationSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const { notifications, markAllNotificationsRead, dismissNotification, getGroupById } = useApp();
 
-  function handleOpen() {
-    markAllNotificationsRead();
-  }
-
   function handleGroupPress(groupId: string) {
     onClose();
     router.push({ pathname: "/group/[id]", params: { id: groupId } });
   }
 
   const isEmpty = notifications.length === 0;
+  const hasUnread = notifications.some(n => !n.read);
 
   return (
     <Modal
@@ -66,7 +63,6 @@ export function NotificationSheet({ visible, onClose }: Props) {
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
-      onShow={handleOpen}
     >
       <View style={[styles.container, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
         {/* Handle bar */}
@@ -81,7 +77,7 @@ export function NotificationSheet({ visible, onClose }: Props) {
             <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
           </View>
           <View style={styles.headerRight}>
-            {notifications.length > 0 && (
+            {hasUnread && (
               <Pressable
                 style={({ pressed }) => [
                   styles.markAllBtn,
