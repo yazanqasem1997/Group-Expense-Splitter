@@ -802,7 +802,14 @@ export default function GroupDetailScreen() {
             return (
               <View style={[styles.chatRow, isMe && styles.chatRowMe]}>
                 {!isMe && (
-                  <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={28} imageUri={author?.photo} />
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setProfileMemberId(item.memberId);
+                    }}
+                  >
+                    <Avatar name={author?.name ?? ""} color={author?.avatarColor ?? "#ccc"} size={28} imageUri={author?.photo} />
+                  </Pressable>
                 )}
                 <View style={styles.chatBubbleWrap}>
                   {!isMe && (
