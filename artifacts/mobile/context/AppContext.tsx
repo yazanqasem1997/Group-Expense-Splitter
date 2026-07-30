@@ -11,6 +11,15 @@ import {
   toUserMessage,
   type LegacySnapshot,
 } from "@/services/apiSync";
+import {
+  defineBackgroundRecurringTask,
+  registerBackgroundRecurring,
+  unregisterBackgroundRecurring,
+} from "@/services/backgroundRecurring";
+
+// Register the background task handler at module load time so the OS can
+// invoke it even when the app is suspended. This must run before first render.
+defineBackgroundRecurringTask();
 
 /** All ISO 4217 currencies are valid — the type is kept broad for extensibility. */
 export type Currency = string;
@@ -1885,6 +1894,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     })();
   }, [isSignedIn, getToken, migrateLegacySnapshotIfNeeded, refreshFromServer]);
+
+  // Register / unregister the OS-level background task in step with auth state.
+  useEffect(() => {
+    if (isSignedIn) {
+      void registerBackgroundRecurring();
+    } else {
+      void unregisterBackgroundRecurring();
+    }
+  }, [isSignedIn]);
 
   const fetchExchangeRates = useCallback(async () => {
     try {
