@@ -371,6 +371,8 @@ export interface Expense {
   comments?: ExpenseComment[];
   reactions?: Record<string, string[]>;
   auditLog?: AuditEntry[];
+  /** ID of the RecurringExpense that auto-generated this expense, if any. */
+  sourceRecurringId?: string;
 }
 
 export type ExpenseCategory =
@@ -2963,6 +2965,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         category: r.category,
         createdAt: now.toISOString(),
         addedBy: currentUser.id,
+        sourceRecurringId: r.id,
       };
       updatedExpenses = [newExpense, ...updatedExpenses];
 

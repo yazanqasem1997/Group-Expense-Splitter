@@ -794,9 +794,17 @@ export default function GroupDetailScreen() {
       >
         <CategoryIcon category={expense.category} size={40} />
         <View style={styles.expenseBody}>
-          <Text style={[styles.expenseName, { color: colors.text }]} numberOfLines={1}>
-            {expense.description}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Text style={[styles.expenseName, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>
+              {expense.description}
+            </Text>
+            {!!expense.sourceRecurringId && (
+              <View style={[styles.recurringBadge, { backgroundColor: colors.primaryLight }]}>
+                <Feather name="repeat" size={10} color={colors.primary} />
+                <Text style={[styles.recurringBadgeText, { color: colors.primary }]}>Recurring</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.expenseMetaRow}>
             {!youPaid && payer && (
               <Avatar name={payer.name} color={payer.avatarColor} size={14} imageUri={payer.photo} style={{ marginRight: 4 }} />
@@ -2130,6 +2138,8 @@ const styles = StyleSheet.create({
   settleAllDivider: { height: 1 },
   notInvolvedPill: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
   notInvolvedText: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  recurringBadge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  recurringBadgeText: { fontSize: 10, fontFamily: "Inter_500Medium" },
   settleFeedIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   tripDatesBar: {
     flexDirection: "row", alignItems: "center", gap: 8,
