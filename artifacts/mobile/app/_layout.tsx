@@ -106,7 +106,6 @@ function RootLayoutNav() {
       <Stack.Screen name="group/qr/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="expense/new" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="expense/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="recurring" options={{ headerShown: false }} />
     </Stack>
   );
 }
