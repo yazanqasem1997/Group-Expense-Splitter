@@ -23,6 +23,7 @@ const TAB_PATHS: Record<string, string> = {
 
 function NativeTabLayout() {
   const pathname = usePathname();
+  const { unreadNotificationCount } = useApp();
   // Derive which tab is currently showing from the pathname
   const activeSegment = pathname.split("/").filter(Boolean).pop() ?? "";
 
@@ -35,7 +36,11 @@ function NativeTabLayout() {
 
   return (
     <NativeTabs>
-      <AnyTrigger name="activity" onPress={() => triggerIfActive("activity")}>
+      <AnyTrigger
+        name="activity"
+        onPress={() => triggerIfActive("activity")}
+        badge={unreadNotificationCount > 0 ? unreadNotificationCount : undefined}
+      >
         <Icon sf={{ default: "list.bullet", selected: "list.bullet" }} />
         <Label>Activity</Label>
       </AnyTrigger>
