@@ -371,6 +371,8 @@ export interface Expense {
   comments?: ExpenseComment[];
   reactions?: Record<string, string[]>;
   auditLog?: AuditEntry[];
+  /** ID of the RecurringExpense that auto-generated this expense, if any. */
+  sourceRecurringId?: string;
 }
 
 export type ExpenseCategory =
@@ -518,6 +520,12 @@ interface AppContextType {
   dismissNotification: (id: string) => void;
   checkAndSendGroupReminders: () => void;
   isLoading: boolean;
+  /** 'ok' = last sync succeeded; 'error' = last mutation couldn't reach the server */
+  syncStatus: 'ok' | 'error';
+  /** Clear the sync-error banner (e.g. user dismissed it). */
+  clearSyncError: () => void;
+  /** Re-attempt a bootstrap refresh so the banner resolves if connectivity returned. */
+  retrySync: () => void;
 }
 
 export const CURRENT_USER_ID_EXPORT = "user_current";
@@ -525,6 +533,8 @@ const STORAGE_KEY = "spliteasy_data_v3";
 const MESSAGES_KEY = "@spliteasy_messages";
 const RECURRING_KEY = "@spliteasy_recurring";
 const NOTIFICATIONS_KEY = "@spliteasy_notifications";
+/** Persistent set of notification IDs the user has explicitly dismissed. */
+const DISMISSED_IDS_KEY = "@spliteasy_dismissed_notif_ids";
 /**
  * Offline cache of the last server bootstrap snapshot. AsyncStorage is used
  * only as a cache/offline read — the production API is the source of truth.
@@ -1612,6 +1622,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'ok' | 'error'>('ok');
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
   const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
@@ -1621,6 +1632,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Lock: prevents background task and foreground check from running concurrently.
   const recurringLockRef = useRef(false);
+
+  /**
+   * Ref-backed set of permanently dismissed notification IDs. Using a ref lets
+   * applyBootstrap (a sync useCallback) read the current dismissed set without
+   * needing it in its dependency array.
+   */
+  const dismissedNotifIdsRef = useRef<Set<string>>(new Set());
+
+  /**
+   * Merge server-sourced notifications with whatever is already in state.
+   * Rules:
+   *  - Server entries are included unless the user dismissed them.
+   *  - Local-only entries (e.g. nudge notifications never sent to the server)
+   *    are kept as long as they haven't been dismissed.
+   *  - For IDs present in both lists the local `read` state wins (may be more
+   *    up-to-date than the server).
+   *  - Result is sorted newest-first.
+   */
+  const mergeNotifications = useCallback(
+    (incoming: AppNotification[], current: AppNotification[]): AppNotification[] => {
+      const dismissed = dismissedNotifIdsRef.current;
+      const currentById = new Map(current.map(n => [n.id, n]));
+      const result: AppNotification[] = [];
+
+      // Include server/cache entries, preserving local read state.
+      for (const n of incoming) {
+        if (dismissed.has(n.id)) continue;
+        const local = currentById.get(n.id);
+        result.push(local ? { ...n, read: local.read } : n);
+      }
+
+      // Append local-only entries (nudge notifications, etc.) not in the incoming list.
+      const incomingIds = new Set(incoming.map(n => n.id));
+      for (const n of current) {
+        if (dismissed.has(n.id)) continue;
+        if (!incomingIds.has(n.id)) result.push(n);
+      }
+
+      // Newest first.
+      result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return result;
+    },
+    []
+  );
 
   const genId = () =>
     Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
@@ -1634,7 +1689,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSettlements(mapped.settlements);
     setInvitations(mapped.invitations);
     setRecurringExpenses(mapped.recurringExpenses);
-    setNotifications(mapped.notifications);
+    // Merge server notifications with local state: keep local-only nudge entries
+    // and preserve per-entry read state, while filtering out dismissed IDs.
+    setNotifications(prev => {
+      const merged = mergeNotifications(mapped.notifications, prev);
+      AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(merged)).catch(() => {});
+      return merged;
+    });
     setMemberKeyMap(mapped.memberKeyMap);
     setServerUserId(mapped.currentUserId);
     if (mapped.notifPrefs) setNotifPrefs(mapped.notifPrefs);
@@ -1642,7 +1703,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Group messages are not part of the bootstrap payload; they remain managed
     // by the local MESSAGES_KEY cache, so we don't overwrite them here.
     AsyncStorage.setItem(SERVER_CACHE_KEY, JSON.stringify({ ...mapped, groupMessages: undefined })).catch(() => {});
-  }, []);
+  }, [mergeNotifications]);
 
   /**
    * Refresh authoritative state from GET /api/me/bootstrap. Used after a
@@ -1691,6 +1752,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (messagesStored) {
         try { setGroupMessages(JSON.parse(messagesStored)); } catch {}
       }
+
+      // Load the persistent dismissed-ID set first so the ref is populated
+      // before any notification merge runs.
+      const dismissedRaw = await AsyncStorage.getItem(DISMISSED_IDS_KEY);
+      if (dismissedRaw) {
+        try {
+          const ids: string[] = JSON.parse(dismissedRaw);
+          dismissedNotifIdsRef.current = new Set(ids);
+        } catch {}
+      }
+
+      // Seed the notifications list from the local store.  This covers the
+      // offline/cold-start case where the server cache hasn't loaded yet and
+      // ensures locally-created nudge notifications survive restarts.
+      const localNotifRaw = await AsyncStorage.getItem(NOTIFICATIONS_KEY);
+      if (localNotifRaw) {
+        try {
+          const local: AppNotification[] = JSON.parse(localNotifRaw);
+          const dismissed = dismissedNotifIdsRef.current;
+          setNotifications(local.filter(n => !dismissed.has(n.id)));
+        } catch {}
+      }
     } catch {}
   }, []);
 
@@ -1710,13 +1793,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSettlements(mapped.settlements ?? []);
       setInvitations(mapped.invitations ?? []);
       setRecurringExpenses(mapped.recurringExpenses ?? []);
-      setNotifications(mapped.notifications ?? []);
+      // Merge cache notifications with whatever local prefs loaded earlier.
+      setNotifications(prev => mergeNotifications(mapped.notifications ?? [], prev));
       if (mapped.memberKeyMap) setMemberKeyMap(mapped.memberKeyMap);
       if (mapped.currentUserId) setServerUserId(mapped.currentUserId);
       if (mapped.notifPrefs) setNotifPrefs(mapped.notifPrefs);
       // Group messages come from the dedicated MESSAGES_KEY cache (loadLocalPrefs).
     } catch {}
-  }, []);
+  }, [mergeNotifications]);
 
   /**
    * One-time migration of the legacy `spliteasy_data_v3` snapshot to the
@@ -1890,13 +1974,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    * All calls are fire-and-forget so the public (synchronous) method
    * signatures in AppContextType are preserved.
    */
+  /** True when the error is a connectivity failure (no response), not a server 4xx/5xx. */
+  const isNetworkError = (e: unknown): boolean => {
+    if (!(e instanceof Error)) return false;
+    if ('status' in e) return false; // API errors carry a status field
+    return true;
+  };
+
   const runServerSync = useCallback(
     (fn: () => Promise<unknown>, opts?: { errorMessage?: string; silent?: boolean }) => {
       (async () => {
         try {
           await fn();
+          setSyncStatus('ok');
           await refreshFromServer();
         } catch (e) {
+          // Connectivity failure → raise the persistent banner so the user knows
+          // the change didn't reach the server, even after the toast fades.
+          if (isNetworkError(e)) setSyncStatus('error');
           if (!opts?.silent) {
             showToast(toUserMessage(e, opts?.errorMessage), "warning");
           }
@@ -1907,6 +2002,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [refreshFromServer, showToast]
   );
+
+  const clearSyncError = useCallback(() => setSyncStatus('ok'), []);
+
+  const retrySync = useCallback(() => {
+    refreshFromServer().then(ok => { if (ok) setSyncStatus('ok'); });
+  }, [refreshFromServer]);
 
   const saveMessages = useCallback(async (msgs: GroupMessage[]) => {
     try { await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(msgs)); } catch {}
@@ -2837,10 +2938,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [saveNotifications, showToast]);
 
   const dismissNotification = useCallback((id: string) => {
+    // Add to the persistent dismissed set so that future bootstrap merges
+    // don't re-surface this notification after an app restart.
+    const updated = new Set(dismissedNotifIdsRef.current).add(id);
+    dismissedNotifIdsRef.current = updated;
+    AsyncStorage.setItem(DISMISSED_IDS_KEY, JSON.stringify([...updated])).catch(() => {});
+
     setNotifications(prev => {
-      const updated = prev.filter(n => n.id !== id);
-      saveNotifications(updated);
-      return updated;
+      const filtered = prev.filter(n => n.id !== id);
+      saveNotifications(filtered);
+      return filtered;
     });
     // No dedicated dismiss endpoint; treat dismissal as "read" on the server.
     api.markNotificationRead(id).catch(() => {});
@@ -2882,6 +2989,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         category: r.category,
         createdAt: now.toISOString(),
         addedBy: currentUser.id,
+        sourceRecurringId: r.id,
       };
       updatedExpenses = [newExpense, ...updatedExpenses];
 
@@ -2962,9 +3070,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       const nudgeNum = campaign.nudgesSent + 1;
+      // Stable dedup key: same group + nudge index always produces the same id,
+      // so re-running this function never re-adds an already-dismissed nudge.
+      const stableId = `nudge_${g.id}_${nudgeNum}`;
+      const alreadyExists = notifications.some(n => n.id === stableId);
+      if (alreadyExists) return;
+
       const { title, body } = buildNudgeMessage(g.name, debts.length, nudgeNum, campaign.tone);
       newNotifs.push({
-        id: genId(),
+        id: stableId,
         type: "settlement_reminder",
         groupId: g.id,
         title,
@@ -2991,7 +3105,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveData(members, updatedGroups, expenses, settlements, invitations);
       showToast(`${newNotifs.length} settlement nudge${newNotifs.length > 1 ? "s" : ""} sent`, "info");
     }
-  }, [groups, members, expenses, settlements, invitations, getGroupBalances, saveData, saveNotifications, showToast]);
+  }, [groups, members, expenses, settlements, invitations, notifications, getGroupBalances, saveData, saveNotifications, showToast]);
 
   // ── Foreground-resume: re-hydrate authoritative state from the server ──
   // On resume we re-fetch the bootstrap so any changes made elsewhere (or
@@ -3087,6 +3201,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dismissNotification,
         checkAndSendGroupReminders,
         isLoading,
+        syncStatus,
+        clearSyncError,
+        retrySync,
       }}
     >
       {children}

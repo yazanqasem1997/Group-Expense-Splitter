@@ -26,6 +26,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 
 import { AppAlert } from "@/components/AppAlert";
 import { AuthBridge } from "@/components/AuthBridge";
+import { SyncStatusBanner } from "@/components/SyncStatusBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { BiometricProvider, useBiometric } from "@/context/BiometricContext";
@@ -106,7 +107,6 @@ function RootLayoutNav() {
       <Stack.Screen name="group/qr/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="expense/new" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="expense/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="recurring" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -154,6 +154,7 @@ export default function RootLayout() {
                     <ClerkLoaded>
                       <AuthBridge />
                       <AppProvider>
+                        <SyncStatusBanner />
                         <BiometricProvider>
                           <RootLayoutNav />
                         </BiometricProvider>

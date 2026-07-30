@@ -1,16 +1,14 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-
   FlatList,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -21,8 +19,8 @@ import { Avatar } from "@/components/Avatar";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { EmptyState } from "@/components/EmptyState";
 import {
-  Currency,
   CURRENCY_SYMBOLS,
+  RECURRING_FREQUENCY_DAYS,
   RECURRING_FREQUENCY_LABELS,
   RecurringExpense,
   RecurringFrequency,
@@ -30,19 +28,34 @@ import {
   useApp,
 } from "@/context/AppContext";
 import { showAlert } from "@/hooks/alertStore";
+import { scrollRegistry } from "@/hooks/scrollRegistry";
 import { useTheme } from "@/hooks/useTheme";
 
 const FREQUENCIES: RecurringFrequency[] = ["weekly", "biweekly", "monthly", "quarterly"];
-
 const CATEGORIES = ["food", "transport", "accommodation", "entertainment", "utilities", "shopping", "health", "other"];
 
-export default function RecurringScreen() {
+type GroupedSection = {
+  groupId: string;
+  groupName: string;
+  groupEmoji: string;
+  items: RecurringExpense[];
+};
+
+export default function RecurringTabScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const {
     recurringExpenses, addRecurringExpense, updateRecurringExpense, deleteRecurringExpense,
     checkAndAddRecurring, groups, members, currentUser, getMemberById, getGroupById,
   } = useApp();
+
+  const listRef = useRef<FlatList>(null);
+  useEffect(() => {
+    scrollRegistry.register("recurring", () => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+    return () => scrollRegistry.unregister("recurring");
+  }, []);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -61,8 +74,36 @@ export default function RecurringScreen() {
   });
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const activeRecurring = recurringExpenses.filter(r => r.isActive);
-  const pausedRecurring = recurringExpenses.filter(r => !r.isActive);
+  const activeCount = recurringExpenses.filter(r => r.isActive).length;
+  const pausedCount = recurringExpenses.filter(r => !r.isActive).length;
+  const dueSoonCount = recurringExpenses.filter(r => {
+    const d = new Date(r.nextDueAt);
+    return r.isActive && d <= new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  }).length;
+
+  // Group recurring expenses by group, preserving group order from the groups array
+  const grouped: GroupedSection[] = groups
+    .filter(g => !g.isArchived)
+    .map(g => ({
+      groupId: g.id,
+      groupName: g.name,
+      groupEmoji: g.emoji,
+      items: recurringExpenses.filter(r => r.groupId === g.id),
+    }))
+    .filter(s => s.items.length > 0);
+
+  // Also include archived groups that still have recurring expenses
+  const archivedSections: GroupedSection[] = groups
+    .filter(g => g.isArchived)
+    .map(g => ({
+      groupId: g.id,
+      groupName: g.name,
+      groupEmoji: g.emoji,
+      items: recurringExpenses.filter(r => r.groupId === g.id),
+    }))
+    .filter(s => s.items.length > 0);
+
+  const allSections = [...grouped, ...archivedSections];
 
   function resetForm(groupId?: string) {
     setForm({
@@ -77,19 +118,29 @@ export default function RecurringScreen() {
     setEditId(null);
   }
 
-  function openAdd() {
-    resetForm();
+  function openAdd(defaultGroupId?: string) {
+    resetForm(defaultGroupId);
     setFormError("");
     setSaving(false);
-    formSnapshot.current = JSON.stringify({
-      groupId: groups[0]?.id ?? "",
+    const snap: {
+      groupId: string;
+      description: string;
+      amount: string;
+      paidById: string;
+      frequency: RecurringFrequency;
+      category: string;
+      nextDueAt: string;
+    } = {
+      groupId: defaultGroupId ?? groups[0]?.id ?? "",
       description: "",
       amount: "",
       paidById: currentUser.id,
       frequency: "monthly",
       category: "utilities",
       nextDueAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    });
+    };
+    formSnapshot.current = JSON.stringify(snap);
+    setForm(snap);
     setShowAddModal(true);
   }
 
@@ -197,11 +248,11 @@ export default function RecurringScreen() {
     showAlert(
       "Delete this schedule?",
       target
-        ? `"${target.description}" will stop repeating and be removed. Expenses it already created stay. You can undo this right after.`
-        : "This recurring expense will stop and be removed. You can undo this right after.",
+        ? `"${target.description}" will stop repeating and be removed. Expenses it already created stay.`
+        : "This recurring expense will stop and be removed.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => { deleteRecurringExpense(id); } },
+        { text: "Delete", style: "destructive", onPress: () => deleteRecurringExpense(id) },
       ]
     );
   }
@@ -213,17 +264,20 @@ export default function RecurringScreen() {
 
   const selectedGroup = getGroupById(form.groupId);
 
-  function renderItem({ item }: { item: RecurringExpense }) {
-    const group = getGroupById(item.groupId);
-    const payer = getMemberById(item.paidById);
+  function renderRecurringCard(item: RecurringExpense) {
     const now = new Date();
     const due = new Date(item.nextDueAt);
     const daysUntil = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     const isOverdue = daysUntil <= 0;
     const isDueSoon = daysUntil <= 3 && daysUntil > 0;
+    const payer = getMemberById(item.paidById);
+    const freqLabel = item.frequency === "custom"
+      ? `Every ${item.customDays ?? 30}d`
+      : RECURRING_FREQUENCY_LABELS[item.frequency];
 
     return (
       <Pressable
+        key={item.id}
         style={[styles.card, { backgroundColor: colors.surface }]}
         onPress={() => openEdit(item)}
       >
@@ -232,16 +286,28 @@ export default function RecurringScreen() {
         </View>
         <View style={styles.cardBody}>
           <View style={styles.cardTitleRow}>
-            <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>{item.description}</Text>
+            <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
+              {item.description}
+            </Text>
             {!item.isActive && (
               <View style={[styles.pausedBadge, { backgroundColor: colors.border }]}>
                 <Text style={[styles.pausedText, { color: colors.textTertiary }]}>Paused</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
-            {group?.emoji} {group?.name} · {RECURRING_FREQUENCY_LABELS[item.frequency]}
-          </Text>
+          <View style={styles.cardMetaRow}>
+            <Feather name="repeat" size={11} color={colors.textTertiary} />
+            <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>{freqLabel}</Text>
+            {payer && (
+              <>
+                <Text style={[styles.dot, { color: colors.textTertiary }]}>·</Text>
+                <Avatar name={payer.name} color={payer.avatarColor} size={14} imageUri={payer.photo} />
+                <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                  {payer.isCurrentUser ? "You" : payer.name.split(" ")[0]}
+                </Text>
+              </>
+            )}
+          </View>
           <View style={styles.cardDueRow}>
             <View style={[
               styles.duePill,
@@ -280,6 +346,9 @@ export default function RecurringScreen() {
                 size={13}
                 color={item.isActive ? colors.warning : colors.success}
               />
+              <Text style={[styles.actionBtnText, { color: item.isActive ? colors.warning : colors.success }]}>
+                {item.isActive ? "Pause" : "Resume"}
+              </Text>
             </Pressable>
             <Pressable
               style={[styles.actionBtn, { backgroundColor: colors.dangerLight }]}
@@ -293,61 +362,130 @@ export default function RecurringScreen() {
     );
   }
 
+  type ListItem =
+    | { type: "summary" }
+    | { type: "section_header"; section: GroupedSection }
+    | { type: "recurring_card"; item: RecurringExpense; sectionId: string }
+    | { type: "section_add"; section: GroupedSection };
+
+  const listData: ListItem[] = [];
+
+  if (recurringExpenses.length > 0) {
+    listData.push({ type: "summary" });
+  }
+
+  allSections.forEach(section => {
+    listData.push({ type: "section_header", section });
+    section.items.forEach(item => {
+      listData.push({ type: "recurring_card", item, sectionId: section.groupId });
+    });
+    listData.push({ type: "section_add", section });
+  });
+
+  function renderListItem({ item }: { item: ListItem }) {
+    if (item.type === "summary") {
+      return (
+        <View style={styles.summaryRow}>
+          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.summaryNum, { color: colors.text }]}>{activeCount}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Active</Text>
+          </View>
+          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.summaryNum, { color: colors.text }]}>{pausedCount}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Paused</Text>
+          </View>
+          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.summaryNum, { color: colors.warning }]}>{dueSoonCount}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Due Soon</Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (item.type === "section_header") {
+      const { section } = item;
+      const activeInGroup = section.items.filter(r => r.isActive).length;
+      return (
+        <Pressable
+          style={styles.sectionHeader}
+          onPress={() => router.push({ pathname: "/group/[id]", params: { id: section.groupId } })}
+        >
+          <Text style={styles.sectionEmoji}>{section.groupEmoji}</Text>
+          <Text style={[styles.sectionName, { color: colors.text }]} numberOfLines={1}>
+            {section.groupName}
+          </Text>
+          <View style={[styles.sectionBadge, { backgroundColor: colors.primaryLight }]}>
+            <Text style={[styles.sectionBadgeText, { color: colors.primary }]}>
+              {activeInGroup}/{section.items.length} active
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={15} color={colors.textTertiary} />
+        </Pressable>
+      );
+    }
+
+    if (item.type === "recurring_card") {
+      return renderRecurringCard(item.item);
+    }
+
+    if (item.type === "section_add") {
+      return (
+        <Pressable
+          style={[styles.addInGroupBtn, { borderColor: colors.border }]}
+          onPress={() => openAdd(item.section.groupId)}
+        >
+          <Feather name="plus" size={14} color={colors.primary} />
+          <Text style={[styles.addInGroupText, { color: colors.primary }]}>
+            Add recurring to {item.section.groupName}
+          </Text>
+        </Pressable>
+      );
+    }
+
+    return null;
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.headerBg }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={24} color={colors.text} />
-        </Pressable>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Recurring</Text>
         <View style={styles.headerRight}>
           <Pressable style={[styles.checkBtn, { backgroundColor: colors.successLight }]} onPress={handleCheck}>
             <Feather name="refresh-cw" size={16} color={colors.success} />
           </Pressable>
-          <Pressable style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={openAdd}>
+          <Pressable style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => openAdd()}>
             <Feather name="plus" size={20} color="#fff" />
           </Pressable>
         </View>
       </View>
 
       <FlatList
-        data={recurringExpenses}
-        keyExtractor={r => r.id}
-        contentContainerStyle={[styles.list, { paddingBottom: Platform.OS === "web" ? 134 : 100 }]}
+        ref={listRef}
+        data={listData}
+        keyExtractor={(item, idx) => {
+          if (item.type === "summary") return "summary";
+          if (item.type === "section_header") return `sh-${item.section.groupId}`;
+          if (item.type === "recurring_card") return `rc-${item.item.id}`;
+          if (item.type === "section_add") return `sa-${item.section.groupId}`;
+          return String(idx);
+        }}
+        contentContainerStyle={[
+          styles.list,
+          { paddingBottom: Platform.OS === "web" ? 134 : insets.bottom + 100 },
+        ]}
         showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          recurringExpenses.length > 0 ? (
-            <View style={styles.summaryRow}>
-              <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.summaryNum, { color: colors.text }]}>{activeRecurring.length}</Text>
-                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Active</Text>
-              </View>
-              <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.summaryNum, { color: colors.text }]}>{pausedRecurring.length}</Text>
-                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Paused</Text>
-              </View>
-              <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.summaryNum, { color: colors.warning }]}>
-                  {recurringExpenses.filter(r => {
-                    const d = new Date(r.nextDueAt);
-                    return r.isActive && d <= new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-                  }).length}
-                </Text>
-                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Due Soon</Text>
-              </View>
-            </View>
-          ) : null
-        }
         ListEmptyComponent={
           <EmptyState
             icon="repeat"
-            title="No recurring expenses"
+            title="No recurring schedules"
             subtitle="Set up rent, subscriptions, or bills to auto-add them on schedule"
           />
         }
-        renderItem={renderItem}
+        renderItem={renderListItem}
       />
 
+      {/* Add / Edit Modal */}
       <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeModal}>
         <View style={[styles.modal, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
@@ -385,7 +523,7 @@ export default function RecurringScreen() {
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Amount</Text>
             <View style={[styles.fieldInput, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
               <Text style={[styles.currencySymbol, { color: colors.textTertiary }]}>
-                {selectedGroup ? CURRENCY_SYMBOLS[selectedGroup.currency] : "$"}
+                {selectedGroup ? (CURRENCY_SYMBOLS[selectedGroup.currency] ?? selectedGroup.currency) : "$"}
               </Text>
               <TextInput
                 style={[styles.fieldText, { color: colors.text }]}
@@ -503,28 +641,32 @@ export default function RecurringScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  formErrorBox: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, marginBottom: 12,
-  },
-  formErrorText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
   header: {
     flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 14, gap: 12,
     shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
-  backBtn: { padding: 4 },
-  headerTitle: { flex: 1, fontSize: 22, fontFamily: "Inter_700Bold" },
+  headerTitle: { flex: 1, fontSize: 28, fontFamily: "Inter_700Bold" },
   headerRight: { flexDirection: "row", gap: 8 },
   checkBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   addBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  list: { padding: 16, gap: 10 },
-  summaryRow: { flexDirection: "row", gap: 10, marginBottom: 6 },
+  list: { padding: 16, gap: 8 },
+  summaryRow: { flexDirection: "row", gap: 10, marginBottom: 8 },
   summaryCard: {
     flex: 1, alignItems: "center", padding: 14, borderRadius: 14,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
   summaryNum: { fontSize: 24, fontFamily: "Inter_700Bold" },
   summaryLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  // Section header
+  sectionHeader: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 4, paddingTop: 16, paddingBottom: 8,
+  },
+  sectionEmoji: { fontSize: 18 },
+  sectionName: { flex: 1, fontSize: 16, fontFamily: "Inter_700Bold" },
+  sectionBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  sectionBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  // Card
   card: {
     flexDirection: "row", borderRadius: 16, padding: 14, gap: 12,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
@@ -535,14 +677,33 @@ const styles = StyleSheet.create({
   cardTitle: { flex: 1, fontSize: 15, fontFamily: "Inter_600SemiBold" },
   pausedBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
   pausedText: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  cardMetaRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   cardMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  dot: { fontSize: 12 },
   cardDueRow: { flexDirection: "row", marginTop: 4 },
   duePill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   dueText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   cardRight: { alignItems: "flex-end", gap: 8 },
   cardAmount: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  cardActions: { flexDirection: "row", gap: 6 },
-  actionBtn: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  cardActions: { flexDirection: "row", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" },
+  actionBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8,
+  },
+  actionBtnText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  // Add in group
+  addInGroupBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1,
+    borderStyle: "dashed", marginBottom: 6,
+  },
+  addInGroupText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  // Modal
+  formErrorBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, marginBottom: 12,
+  },
+  formErrorText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
   modal: { flex: 1 },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

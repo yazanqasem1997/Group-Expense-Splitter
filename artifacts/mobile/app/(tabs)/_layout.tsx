@@ -17,12 +17,14 @@ const TAB_PATHS: Record<string, string> = {
   activity: "activity",
   analytics: "analytics",
   index: "",          // home tab — pathname is "/"
+  recurring: "recurring",
   friends: "friends",
   account: "account",
 };
 
 function NativeTabLayout() {
   const pathname = usePathname();
+  const { unreadNotificationCount } = useApp();
   // Derive which tab is currently showing from the pathname
   const activeSegment = pathname.split("/").filter(Boolean).pop() ?? "";
 
@@ -35,7 +37,11 @@ function NativeTabLayout() {
 
   return (
     <NativeTabs>
-      <AnyTrigger name="activity" onPress={() => triggerIfActive("activity")}>
+      <AnyTrigger
+        name="activity"
+        onPress={() => triggerIfActive("activity")}
+        badge={unreadNotificationCount > 0 ? unreadNotificationCount : undefined}
+      >
         <Icon sf={{ default: "list.bullet", selected: "list.bullet" }} />
         <Label>Activity</Label>
       </AnyTrigger>
@@ -46,6 +52,10 @@ function NativeTabLayout() {
       <AnyTrigger name="index" onPress={() => triggerIfActive("index")}>
         <Icon sf={{ default: "house", selected: "house.fill" }} />
         <Label>Groups</Label>
+      </AnyTrigger>
+      <AnyTrigger name="recurring" onPress={() => triggerIfActive("recurring")}>
+        <Icon sf={{ default: "repeat", selected: "repeat" }} />
+        <Label>Recurring</Label>
       </AnyTrigger>
       <AnyTrigger name="friends" onPress={() => triggerIfActive("friends")}>
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
@@ -143,6 +153,21 @@ function ClassicTabLayout() {
         }}
         listeners={({ navigation }) => ({
           tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("index"); },
+        })}
+      />
+      <Tabs.Screen
+        name="recurring"
+        options={{
+          title: "Recurring",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="repeat" tintColor={color} size={24} />
+            ) : (
+              <Feather name="repeat" size={22} color={color} />
+            ),
+        }}
+        listeners={({ navigation }) => ({
+          tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("recurring"); },
         })}
       />
       <Tabs.Screen
