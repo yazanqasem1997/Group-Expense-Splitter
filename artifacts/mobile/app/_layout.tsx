@@ -26,6 +26,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 
 import { AppAlert } from "@/components/AppAlert";
 import { AuthBridge } from "@/components/AuthBridge";
+import { SyncStatusBanner } from "@/components/SyncStatusBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { BiometricProvider, useBiometric } from "@/context/BiometricContext";
@@ -153,6 +154,7 @@ export default function RootLayout() {
                     <ClerkLoaded>
                       <AuthBridge />
                       <AppProvider>
+                        <SyncStatusBanner />
                         <BiometricProvider>
                           <RootLayoutNav />
                         </BiometricProvider>

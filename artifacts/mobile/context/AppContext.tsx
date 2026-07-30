@@ -520,6 +520,12 @@ interface AppContextType {
   dismissNotification: (id: string) => void;
   checkAndSendGroupReminders: () => void;
   isLoading: boolean;
+  /** 'ok' = last sync succeeded; 'error' = last mutation couldn't reach the server */
+  syncStatus: 'ok' | 'error';
+  /** Clear the sync-error banner (e.g. user dismissed it). */
+  clearSyncError: () => void;
+  /** Re-attempt a bootstrap refresh so the banner resolves if connectivity returned. */
+  retrySync: () => void;
 }
 
 export const CURRENT_USER_ID_EXPORT = "user_current";
@@ -1616,6 +1622,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'ok' | 'error'>('ok');
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
   const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
@@ -1967,13 +1974,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    * All calls are fire-and-forget so the public (synchronous) method
    * signatures in AppContextType are preserved.
    */
+  /** True when the error is a connectivity failure (no response), not a server 4xx/5xx. */
+  const isNetworkError = (e: unknown): boolean => {
+    if (!(e instanceof Error)) return false;
+    if ('status' in e) return false; // API errors carry a status field
+    return true;
+  };
+
   const runServerSync = useCallback(
     (fn: () => Promise<unknown>, opts?: { errorMessage?: string; silent?: boolean }) => {
       (async () => {
         try {
           await fn();
+          setSyncStatus('ok');
           await refreshFromServer();
         } catch (e) {
+          // Connectivity failure → raise the persistent banner so the user knows
+          // the change didn't reach the server, even after the toast fades.
+          if (isNetworkError(e)) setSyncStatus('error');
           if (!opts?.silent) {
             showToast(toUserMessage(e, opts?.errorMessage), "warning");
           }
@@ -1984,6 +2002,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [refreshFromServer, showToast]
   );
+
+  const clearSyncError = useCallback(() => setSyncStatus('ok'), []);
+
+  const retrySync = useCallback(() => {
+    refreshFromServer().then(ok => { if (ok) setSyncStatus('ok'); });
+  }, [refreshFromServer]);
 
   const saveMessages = useCallback(async (msgs: GroupMessage[]) => {
     try { await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(msgs)); } catch {}
@@ -3177,6 +3201,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dismissNotification,
         checkAndSendGroupReminders,
         isLoading,
+        syncStatus,
+        clearSyncError,
+        retrySync,
       }}
     >
       {children}
