@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@clerk/expo";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
+import * as Notifications from "expo-notifications";
 import { useToast } from "@/context/ToastContext";
 import {
   api,
@@ -531,6 +532,8 @@ interface AppContextType {
   isLoading: boolean;
   /** 'ok' = last sync succeeded; 'error' = last mutation couldn't reach the server */
   syncStatus: 'ok' | 'error';
+  /** True while the device cannot reach the server at all. */
+  isOffline: boolean;
   /** Clear the sync-error banner (e.g. user dismissed it). */
   clearSyncError: () => void;
   /** Re-attempt a bootstrap refresh so the banner resolves if connectivity returned. */
@@ -1632,6 +1635,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'ok' | 'error'>('ok');
+  const [isOffline, setIsOffline] = useState(false);
   const [simplifyDebtsEnabled, setSimplifyDebtsEnabled] = useState(true);
   const [defaultCurrency, setDefaultCurrencyState] = useState<Currency>("USD");
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
@@ -1722,9 +1726,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const mapped = await fetchBootstrap();
       applyBootstrap(mapped);
+      // Successfully reached the server — clear any offline flag.
+      setIsOffline(false);
+      setSyncStatus('ok');
       return true;
     } catch {
       // Offline / transient — keep whatever cached state we already have.
+      setIsOffline(true);
       return false;
     }
   }, [applyBootstrap]);
@@ -2009,7 +2017,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         } catch (e) {
           // Connectivity failure → raise the persistent banner so the user knows
           // the change didn't reach the server, even after the toast fades.
-          if (isNetworkError(e)) setSyncStatus('error');
+          if (isNetworkError(e)) { setSyncStatus('error'); setIsOffline(true); }
           if (!opts?.silent) {
             showToast(toUserMessage(e, opts?.errorMessage), "warning");
           }
@@ -2978,6 +2986,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let added = 0;
     let updatedRecurring = [...recurringExpenses];
     let updatedExpenses = [...expenses];
+    const firedSummaries: Array<{ description: string; amount: number; currency: string }> = [];
 
     recurringExpenses.forEach(r => {
       if (!r.isActive) return;
@@ -3040,6 +3049,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ? { ...rec, nextDueAt: nextDue.toISOString(), occurrenceCount: newCount, isActive: !shouldDeactivate }
           : rec
       );
+      firedSummaries.push({ description: r.description, amount: r.amount, currency: r.currency });
       added++;
     });
 
@@ -3052,6 +3062,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Server authoritatively creates due recurring expenses and advances the
       // schedules; refresh reconciles our optimistic local computation.
       runServerSync(() => api.runRecurring(), { silent: true });
+      // Fire a local push notification for each triggered schedule so the user
+      // knows a payment was added even when the app is in the background.
+      firedSummaries.forEach(({ description, amount, currency }) => {
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Recurring expense added",
+            body: `${description} · ${currency} ${amount.toFixed(2)}`,
+            data: { type: "recurring_fired" },
+          },
+          trigger: null,
+        }).catch(() => {});
+      });
     }
 
     return added;
@@ -3152,6 +3174,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // While offline, poll every 15 s so the banner clears automatically the
+  // moment connectivity is restored — no manual retry needed.
+  useEffect(() => {
+    if (!isOffline) return;
+    const id = setInterval(() => { refreshFromServerRef.current(); }, 15_000);
+    return () => clearInterval(id);
+  }, [isOffline]);
+
   return (
     <AppContext.Provider
       value={{
@@ -3220,6 +3250,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         checkAndSendGroupReminders,
         isLoading,
         syncStatus,
+        isOffline,
         clearSyncError,
         retrySync,
       }}

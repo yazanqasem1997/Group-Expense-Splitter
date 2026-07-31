@@ -172,9 +172,19 @@ function InviteCard({ invite }: { invite: GroupInvitation }) {
 
 function GroupCard({ groupId, query }: { groupId: string; query: string }) {
   const { colors } = useTheme();
-  const { getGroupById, getMemberById, getGroupBalances, currentUser } = useApp();
+  const { getGroupById, getMemberById, getGroupBalances, currentUser, syncStatus, isOffline, recurringExpenses } = useApp();
   const group = getGroupById(groupId);
   if (!group) return null;
+
+  const showSyncWarning = isOffline || syncStatus === "error";
+
+  // Find the nearest active recurring expense for this group
+  const nextRecurring = recurringExpenses
+    .filter(r => r.isActive && r.groupId === groupId)
+    .sort((a, b) => new Date(a.nextDueAt).getTime() - new Date(b.nextDueAt).getTime())[0];
+  const daysUntilRecurring = nextRecurring
+    ? Math.ceil((new Date(nextRecurring.nextDueAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
 
   const debts = getGroupBalances(groupId);
   const totalCredit = debts.filter(d => d.toId === currentUser.id).reduce((s, d) => s + d.amount, 0);
@@ -227,9 +237,20 @@ function GroupCard({ groupId, query }: { groupId: string; query: string }) {
             <Text style={[styles.memberCount, { color: colors.textSecondary }]}>
               {" "}{group.memberIds.length} {group.memberIds.length === 1 ? "person" : "people"}
             </Text>
+            {daysUntilRecurring !== null && (
+              <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 6 }}>
+                <Feather name="repeat" size={10} color={daysUntilRecurring <= 1 ? colors.danger : daysUntilRecurring <= 3 ? colors.warning : colors.textTertiary} />
+                <Text style={{ fontSize: 10, color: daysUntilRecurring <= 1 ? colors.danger : daysUntilRecurring <= 3 ? colors.warning : colors.textTertiary, marginLeft: 2, fontWeight: "500" }}>
+                  {daysUntilRecurring <= 0 ? "due today" : daysUntilRecurring === 1 ? "tmrw" : `${daysUntilRecurring}d`}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
         <View style={styles.groupCardRight}>
+          {showSyncWarning && (
+            <Feather name="wifi-off" size={12} color={colors.warning} style={{ marginBottom: 4 }} />
+          )}
           {isSettled ? (
             <View style={[styles.settledPill, { backgroundColor: colors.successLight }]}>
               <Feather name="check" size={11} color={colors.success} />
