@@ -9,6 +9,7 @@ import recurringRouter from "./recurring";
 import messagesRouter from "./messages";
 import notificationsRouter from "./notifications";
 import importsRouter from "./imports";
+import seedRouter from "./seed";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(recurringRouter);
 router.use(messagesRouter);
 router.use(notificationsRouter);
 router.use(importsRouter);
+router.use(seedRouter);
 
 export default router;
