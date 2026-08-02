@@ -324,79 +324,28 @@ export default function AnalyticsScreen() {
           {!hasRates && <Text style={[styles.ratesNote, { color: colors.textTertiary }]}>· rates offline</Text>}
         </View>
 
-        {/* Monthly Summary */}
-        <View style={[styles.monthlySummaryCard, { backgroundColor: colors.surface }]}>
-          <View style={styles.monthlyHeader}>
-            <View style={[styles.monthlyIcon, { backgroundColor: colors.primaryLight }]}>
-              <Feather name="calendar" size={16} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.monthlyTitle, { color: colors.text }]}>Monthly Summary</Text>
-              <Text style={[styles.monthlySub, { color: colors.textSecondary }]}>
-                {monthlySummary.monthLabel} vs {monthlySummary.lastMonthLabel}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.monthlyStats}>
-            <View style={styles.monthlyStatItem}>
-              <Text style={[styles.monthlyStatAmt, { color: colors.text }]}>
-                {sym}{monthlySummary.thisTotal.toFixed(0)}
-              </Text>
-              <Text style={[styles.monthlyStatLabel, { color: colors.textSecondary }]}>
-                This month
-              </Text>
-            </View>
-            <View style={[styles.monthlyDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.monthlyStatItem}>
-              <Text style={[styles.monthlyStatAmt, { color: colors.textSecondary }]}>
-                {sym}{monthlySummary.lastTotal.toFixed(0)}
-              </Text>
-              <Text style={[styles.monthlyStatLabel, { color: colors.textSecondary }]}>
-                {monthlySummary.lastMonthLabel}
-              </Text>
-            </View>
-            <View style={[styles.monthlyDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.monthlyStatItem}>
-              <View style={styles.monthlyDeltaRow}>
-                <Feather
-                  name={monthlySummary.diff >= 0 ? "trending-up" : "trending-down"}
-                  size={14}
-                  color={monthlySummary.diff >= 0 ? colors.danger : colors.success}
-                />
-                <Text style={[
-                  styles.monthlyStatAmt,
-                  { color: monthlySummary.diff >= 0 ? colors.danger : colors.success },
-                ]}>
-                  {monthlySummary.diff >= 0 ? "+" : ""}{monthlySummary.pct.toFixed(0)}%
-                </Text>
-              </View>
-              <Text style={[styles.monthlyStatLabel, { color: colors.textSecondary }]}>vs last month</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Summary cards */}
+        {/* KPI summary row — your share · group total · vs last month */}
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.summaryIcon, { backgroundColor: colors.primaryLight }]}>
-              <Feather name="credit-card" size={18} color={colors.primary} />
-            </View>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>You paid</Text>
-            <Text style={[styles.summaryValue, { color: colors.text }]}>{sym}{totalSpent.toFixed(0)}</Text>
-          </View>
-          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.summaryIcon, { backgroundColor: colors.tealTint }]}>
-              <Feather name="pie-chart" size={18} color={colors.teal} />
-            </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Your share</Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>{sym}{myShareTotal.toFixed(0)}</Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.summaryIcon, { backgroundColor: colors.accentTint }]}>
-              <Feather name="users" size={18} color={colors.accent} />
-            </View>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Group total</Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>{sym}{totalGroup.toFixed(0)}</Text>
+          </View>
+          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>vs {monthlySummary.lastMonthLabel}</Text>
+            <View style={styles.monthlyDeltaRow}>
+              <Feather
+                name={monthlySummary.diff >= 0 ? "trending-up" : "trending-down"}
+                size={13}
+                color={monthlySummary.diff >= 0 ? colors.danger : colors.success}
+              />
+              <Text style={[styles.summaryValue, { color: monthlySummary.diff >= 0 ? colors.danger : colors.success }]}>
+                {monthlySummary.diff >= 0 ? "+" : ""}{monthlySummary.pct.toFixed(0)}%
+              </Text>
+            </View>
           </View>
         </View>
 
