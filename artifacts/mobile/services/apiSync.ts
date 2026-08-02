@@ -20,6 +20,7 @@
  * group member's `userId` to the authenticated `/me` user id.
  */
 
+import { customFetch } from "@workspace/api-client-react";
 import {
   bootstrap as apiBootstrap,
   createExpense as apiCreateExpense,
@@ -849,6 +850,11 @@ export const api = {
   // Current user
   async updateCurrentUser(u: UserUpdate): Promise<ServerUser> {
     return apiUpdateCurrentUser(u);
+  },
+
+  // Demo seed
+  async seedDemoData(): Promise<void> {
+    await customFetch("/api/seed", { method: "POST" });
   },
 };
 

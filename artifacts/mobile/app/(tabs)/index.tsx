@@ -21,6 +21,7 @@ import { AmountText, formatAmount } from "@/components/AmountText";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 import { GroupInvitation, useApp } from "@/context/AppContext";
+import { api } from "@/services/apiSync";
 import { useTheme } from "@/hooks/useTheme";
 import { timeAgo } from "@/utils/format";
 
@@ -288,6 +289,20 @@ export default function GroupsScreen() {
     setRefreshing(false);
   }, [checkAndAddRecurring, fetchExchangeRates]);
 
+  const { retrySync } = useApp();
+  const [seeding, setSeeding] = useState(false);
+  const handleSeedData = useCallback(async () => {
+    setSeeding(true);
+    try {
+      await api.seedDemoData();
+      await retrySync();
+    } catch {
+      // Silent — user can pull-to-refresh manually
+    } finally {
+      setSeeding(false);
+    }
+  }, [retrySync]);
+
   const [query, setQuery] = useState("");
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showSort, setShowSort] = useState(false);
@@ -394,6 +409,12 @@ export default function GroupsScreen() {
             </View>
           )}
           <View style={{ flex: 1 }} />
+          <Pressable
+            style={[styles.headerIconBtn, { backgroundColor: colors.surface }]}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/recurring"); }}
+          >
+            <Feather name="repeat" size={19} color={colors.textSecondary} />
+          </Pressable>
           <Pressable
             style={[styles.addBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/group/new"); }}
@@ -656,11 +677,36 @@ export default function GroupsScreen() {
             </View>
           ) : lifecycleTab === "active" ? (
             pendingInvites.length === 0 ? (
-              <EmptyState
-                icon="users"
-                title="No active groups"
-                subtitle="Create a group to start splitting expenses with friends"
-              />
+              <View style={{ alignItems: "center" }}>
+                <EmptyState
+                  icon="users"
+                  title="No active groups"
+                  subtitle="Create a group to start splitting expenses with friends"
+                />
+                <Pressable
+                  onPress={handleSeedData}
+                  disabled={seeding}
+                  style={({ pressed }) => ({
+                    marginTop: 4,
+                    paddingHorizontal: 20,
+                    paddingVertical: 11,
+                    borderRadius: 12,
+                    backgroundColor: seeding ? colors.cardBg : colors.primary,
+                    opacity: pressed || seeding ? 0.75 : 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                  })}
+                >
+                  <Feather name="zap" size={15} color="#fff" />
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
+                    {seeding ? "Loading sample data…" : "Try with sample data"}
+                  </Text>
+                </Pressable>
+                <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 8, textAlign: "center", paddingHorizontal: 32 }}>
+                  Loads 3 demo groups with expenses, members, and settlements
+                </Text>
+              </View>
             ) : null
           ) : lifecycleTab === "ended" ? (
             <EmptyState icon="flag" title="No ended groups" subtitle="Groups you end will appear here until settled" />
@@ -733,6 +779,10 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.30, shadowRadius: 8, elevation: 6,
+  },
+  headerIconBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    alignItems: "center", justifyContent: "center",
   },
   searchBar: {
     flexDirection: "row", alignItems: "center", gap: 9,

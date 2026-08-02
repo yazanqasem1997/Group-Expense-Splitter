@@ -17,7 +17,6 @@ const TAB_PATHS: Record<string, string> = {
   activity: "activity",
   analytics: "analytics",
   index: "",          // home tab — pathname is "/"
-  recurring: "recurring",
   friends: "friends",
   account: "account",
 };
@@ -53,17 +52,13 @@ function NativeTabLayout() {
         <Icon sf={{ default: "house", selected: "house.fill" }} />
         <Label>Groups</Label>
       </AnyTrigger>
-      <AnyTrigger name="recurring" onPress={() => triggerIfActive("recurring")}>
-        <Icon sf={{ default: "repeat", selected: "repeat" }} />
-        <Label>Recurring</Label>
-      </AnyTrigger>
       <AnyTrigger name="friends" onPress={() => triggerIfActive("friends")}>
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
         <Label>Friends</Label>
       </AnyTrigger>
       <AnyTrigger name="account" onPress={() => triggerIfActive("account")}>
-        <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
-        <Label>Account</Label>
+        <Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} />
+        <Label>Settings</Label>
       </AnyTrigger>
     </NativeTabs>
   );
@@ -155,20 +150,10 @@ function ClassicTabLayout() {
           tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("index"); },
         })}
       />
+      {/* recurring.tsx stays in (tabs) for routing but is hidden — it redirects to /recurring (stack screen) */}
       <Tabs.Screen
         name="recurring"
-        options={{
-          title: "Recurring",
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="repeat" tintColor={color} size={24} />
-            ) : (
-              <Feather name="repeat" size={22} color={color} />
-            ),
-        }}
-        listeners={({ navigation }) => ({
-          tabPress: () => { if (navigation.isFocused()) scrollRegistry.trigger("recurring"); },
-        })}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="friends"
@@ -188,12 +173,12 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="account"
         options={{
-          title: "Account",
+          title: "Settings",
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="person.circle" tintColor={color} size={24} />
+              <SymbolView name="gearshape" tintColor={color} size={24} />
             ) : (
-              <Feather name="user" size={22} color={color} />
+              <Feather name="settings" size={22} color={color} />
             ),
         }}
         listeners={({ navigation }) => ({
