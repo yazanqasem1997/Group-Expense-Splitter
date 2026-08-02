@@ -806,12 +806,34 @@ export default function GroupDetailScreen() {
             )}
           </View>
           <View style={styles.expenseMetaRow}>
-            {!youPaid && payer && (
-              <Avatar name={payer.name} color={payer.avatarColor} size={14} imageUri={payer.photo} style={{ marginRight: 4 }} />
+            {youPaid ? (
+              <Text style={[styles.expenseMeta, { color: colors.textSecondary }]}>
+                You paid · {timeAgo(expense.createdAt)}
+              </Text>
+            ) : (
+              <>
+                {payer && (
+                  <Avatar name={payer.name} color={payer.avatarColor} size={14} imageUri={payer.photo} style={{ marginRight: 4 }} />
+                )}
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (payer) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setProfileMemberId(expense.paidById);
+                    }
+                  }}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.expenseMeta, { color: colors.textSecondary }]}>
+                    <Text style={{ color: colors.primary, fontFamily: "Inter_500Medium" }}>
+                      {payer?.name ?? "Someone"}
+                    </Text>
+                    {" paid · "}{timeAgo(expense.createdAt)}
+                  </Text>
+                </Pressable>
+              </>
             )}
-            <Text style={[styles.expenseMeta, { color: colors.textSecondary }]}>
-              {youPaid ? "You" : payer?.name ?? "Someone"} paid · {timeAgo(expense.createdAt)}
-            </Text>
             {(reactionCount > 0 || commentCount > 0) && (
               <View style={styles.expenseSocialRow}>
                 {reactionCount > 0 && (
