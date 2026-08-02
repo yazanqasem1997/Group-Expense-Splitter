@@ -43,7 +43,6 @@ export default function ActivityScreen() {
     checkAndAddRecurring, fetchExchangeRates,
     unreadNotificationCount,
     checkAndSendGroupReminders,
-    updateRecurringExpense,
   } = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -126,12 +125,6 @@ export default function ActivityScreen() {
 
   const expenseCount = allItems.filter(i => i.type === "expense").length;
   const settlementCount = allItems.filter(i => i.type === "settlement").length;
-
-  // Recurring schedules pinned at top: active only, across all groups the user belongs to
-  const activeRecurring = useMemo(() => {
-    const myGroupIds = new Set(groups.filter(g => g.memberIds.includes(currentUser.id)).map(g => g.id));
-    return recurringExpenses.filter(r => r.isActive && myGroupIds.has(r.groupId));
-  }, [recurringExpenses, groups, currentUser.id]);
 
   function highlightText(text: string, style: object) {
     if (!q) return <Text style={style} numberOfLines={1}>{text}</Text>;
@@ -242,11 +235,6 @@ export default function ActivityScreen() {
         <View style={styles.headerTopRow}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Activity</Text>
           <View style={{ flex: 1 }} />
-          <View style={[styles.countPill, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.countText, { color: colors.textSecondary }]}>
-              {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
-            </Text>
-          </View>
           <Pressable
             style={({ pressed }) => [styles.bellBtn, { opacity: pressed ? 0.7 : 1 }]}
             onPress={() => setShowNotifSheet(true)}
@@ -321,49 +309,6 @@ export default function ActivityScreen() {
         onClose={() => setShowNotifSheet(false)}
       />
 
-      {/* Pinned recurring strip */}
-      {activeRecurring.length > 0 && (
-        <View style={[styles.recurStrip, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}>
-          <Text style={[styles.recurStripLabel, { color: colors.textSecondary }]}>
-            🔁 Recurring
-          </Text>
-          <FlatList
-            data={activeRecurring}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={r => r.id}
-            contentContainerStyle={styles.recurStripScroll}
-            renderItem={({ item: r }) => {
-              const grp = getGroupById(r.groupId);
-              return (
-                <Pressable
-                  style={[styles.recurCard, { backgroundColor: colors.background, borderColor: colors.border }]}
-                  onPress={() => router.push({ pathname: "/group/[id]", params: { id: r.groupId } })}
-                >
-                  <View style={styles.recurCardTop}>
-                    <Text style={styles.recurCardEmoji}>{grp?.emoji ?? "📦"}</Text>
-                    <Text style={[styles.recurCardDesc, { color: colors.text }]} numberOfLines={1}>
-                      {r.description}
-                    </Text>
-                  </View>
-                  <AmountText amount={r.amount} currency={grp?.currency ?? "USD"} style={[styles.recurCardAmt, { color: colors.primary }]} />
-                  <View style={styles.recurCardFooter}>
-                    <Text style={[styles.recurCardFreq, { color: colors.textTertiary }]}>{r.frequency}</Text>
-                    <Pressable
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      onPress={e => { e.stopPropagation(); updateRecurringExpense(r.id, { isActive: false }); }}
-                      style={[styles.recurPauseBtn, { backgroundColor: colors.warningLight }]}
-                    >
-                      <Feather name="pause" size={10} color={colors.warning} />
-                    </Pressable>
-                  </View>
-                </Pressable>
-              );
-            }}
-          />
-        </View>
-      )}
-
       <FlatList
         ref={listRef}
         data={filteredItems}
@@ -426,7 +371,7 @@ const styles = StyleSheet.create({
   },
   headerTopRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 4 },
   headerTitle: { fontSize: 30, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  countPill: {
+  _countPill_unused: {
     paddingHorizontal: 10, paddingVertical: 4,
     borderRadius: 10, borderWidth: 1,
   },

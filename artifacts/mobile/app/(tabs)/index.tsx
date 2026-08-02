@@ -539,10 +539,6 @@ export default function GroupsScreen() {
                       end={{ x: 1, y: 1 }}
                       style={styles.heroCard}
                     >
-                      {/* Decorative circles */}
-                      <View style={styles.heroCircle1} />
-                      <View style={styles.heroCircle2} />
-
                       <View style={styles.heroDotRow}>
                         <View style={styles.heroDot} />
                         <Text style={styles.heroLabelWhite}>
@@ -593,62 +589,6 @@ export default function GroupsScreen() {
                   ))}
                 </View>
               )}
-
-              {/* Recurring expenses quick-access */}
-              {lifecycleTab === "active" && (() => {
-                const activeCount = recurringExpenses.filter(r => r.isActive).length;
-                const totalCount = recurringExpenses.length;
-                if (totalCount === 0) return (
-                  <Pressable
-                    style={[styles.recurringBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/recurring"); }}
-                  >
-                    <View style={[styles.recurringIconWrap, { backgroundColor: colors.tealTint }]}>
-                      <Feather name="repeat" size={15} color={colors.teal} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.recurringBannerTitle, { color: colors.text }]}>Recurring Expenses</Text>
-                      <Text style={[styles.recurringBannerSub, { color: colors.textTertiary }]}>Automate regular splits</Text>
-                    </View>
-                    <Feather name="chevron-right" size={16} color={colors.textTertiary} />
-                  </Pressable>
-                );
-                // Find the next due schedule
-                const active = recurringExpenses.filter(r => r.isActive).sort((a, b) => new Date(a.nextDueAt).getTime() - new Date(b.nextDueAt).getTime());
-                const next = active[0];
-                const nextLabel = next ? (() => {
-                  const d = new Date(next.nextDueAt);
-                  const now = new Date();
-                  const diffMs = d.getTime() - now.getTime();
-                  const diffDays = Math.ceil(diffMs / 86400000);
-                  if (diffDays <= 0) return "Due today";
-                  if (diffDays === 1) return "Due tomorrow";
-                  if (diffDays <= 7) return `Due in ${diffDays}d`;
-                  return `Due ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-                })() : null;
-                return (
-                  <Pressable
-                    style={[styles.recurringBanner, { backgroundColor: colors.surface, borderColor: colors.teal + "30" }]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/recurring"); }}
-                  >
-                    <View style={[styles.recurringIconWrap, { backgroundColor: colors.tealTint }]}>
-                      <Feather name="repeat" size={15} color={colors.teal} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.recurringBannerTitle, { color: colors.text }]}>
-                        {activeCount} active {activeCount === 1 ? "schedule" : "schedules"}
-                        {totalCount > activeCount ? <Text style={{ color: colors.textTertiary }}> · {totalCount - activeCount} paused</Text> : null}
-                      </Text>
-                      {nextLabel && (
-                        <Text style={[styles.recurringBannerSub, { color: colors.textTertiary }]}>
-                          {(() => { const g = groups.find(gr => gr.id === next.groupId); return g ? `${g.emoji} ${g.name} · ` : ""; })()}{next.description} · {nextLabel}
-                        </Text>
-                      )}
-                    </View>
-                    <Feather name="chevron-right" size={16} color={colors.textTertiary} />
-                  </Pressable>
-                );
-              })()}
 
               {/* Section label */}
               {activeGroups.length > 0 && (

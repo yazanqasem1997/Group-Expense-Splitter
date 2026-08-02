@@ -3,10 +3,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  LayoutAnimation,
   Modal,
   Platform,
   Pressable,
@@ -20,7 +19,6 @@ import {
 } from "react-native";
 import { showAlert } from "@/hooks/alertStore";
 import { scrollRegistry } from "@/hooks/scrollRegistry";
-import { useScrollToTop } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { THEME_META, THEME_ORDER, ThemeId } from "@/constants/themes";
@@ -126,9 +124,6 @@ export default function AccountScreen() {
   const [refreshingRates, setRefreshingRates] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name);
-  const [settingsQuery, setSettingsQuery] = useState("");
-  const searchRef = useRef<TextInput>(null);
-  const isSearchActive = settingsQuery.trim().length > 0;
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     scrollRegistry.register("account", () => {
@@ -137,18 +132,6 @@ export default function AccountScreen() {
     return () => scrollRegistry.unregister("account");
   }, []);
   const nameInputRef = useRef<TextInput>(null);
-  const [expandedNotifCats, setExpandedNotifCats] = useState<string[]>([]);
-
-  function toggleNotifCat(cat: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (Platform.OS !== "web") {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
-    setExpandedNotifCats(prev =>
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-    );
-  }
-
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -206,180 +189,6 @@ export default function AccountScreen() {
   const hasRates = Object.keys(exchangeRates).length > 0;
   const selectedCurrencyInfo = CURRENCIES.find(c => c.code === defaultCurrency)!;
 
-  // ── Settings search catalog ──────────────────────────────────────────────
-  type SettingsItemType = "toggle" | "navigate" | "action";
-  interface SettingsItem {
-    id: string;
-    section: string;
-    label: string;
-    sub: string;
-    icon: string;
-    iconBg: string;
-    iconColor: string;
-    keywords: string[];
-    type: SettingsItemType;
-    value?: boolean;
-    displayValue?: string;
-    onAction: () => void;
-  }
-
-  const allSettingsItems = useMemo<SettingsItem[]>(() => [
-    // Notifications — Expenses
-    {
-      id: "notif-expense-added", section: "Notifications · Expenses",
-      label: "New expense", sub: "Someone adds an expense to your group",
-      icon: "plus-circle", iconBg: colors.primaryLight + "88", iconColor: colors.primary,
-      keywords: ["notification", "expense", "new", "added", "alert", "push"],
-      type: "toggle", value: notifPrefs.expenseAdded,
-      onAction: () => updateNotifPref("expenseAdded", !notifPrefs.expenseAdded),
-    },
-    {
-      id: "notif-expense-edited", section: "Notifications · Expenses",
-      label: "Expense edited", sub: "Someone modifies an existing expense",
-      icon: "edit-2", iconBg: colors.primaryLight + "88", iconColor: colors.primary,
-      keywords: ["notification", "expense", "edited", "modified", "alert"],
-      type: "toggle", value: notifPrefs.expenseEdited,
-      onAction: () => updateNotifPref("expenseEdited", !notifPrefs.expenseEdited),
-    },
-    {
-      id: "notif-expense-deleted", section: "Notifications · Expenses",
-      label: "Expense deleted", sub: "Someone removes an expense",
-      icon: "trash-2", iconBg: colors.dangerLight ?? colors.primaryLight + "88", iconColor: colors.danger,
-      keywords: ["notification", "expense", "deleted", "removed", "alert"],
-      type: "toggle", value: notifPrefs.expenseDeleted,
-      onAction: () => updateNotifPref("expenseDeleted", !notifPrefs.expenseDeleted),
-    },
-    // Notifications — Social
-    {
-      id: "notif-comment", section: "Notifications · Social",
-      label: "Comments", sub: "Someone comments on an expense",
-      icon: "message-square", iconBg: colors.accentTint + "88", iconColor: colors.accent,
-      keywords: ["notification", "comment", "social", "message", "chat"],
-      type: "toggle", value: notifPrefs.comment,
-      onAction: () => updateNotifPref("comment", !notifPrefs.comment),
-    },
-    {
-      id: "notif-reaction", section: "Notifications · Social",
-      label: "Reactions", sub: "Someone reacts to an expense",
-      icon: "heart", iconBg: colors.accentTint + "88", iconColor: colors.accent,
-      keywords: ["notification", "reaction", "emoji", "like", "social"],
-      type: "toggle", value: notifPrefs.reaction,
-      onAction: () => updateNotifPref("reaction", !notifPrefs.reaction),
-    },
-    // Notifications — Financial
-    {
-      id: "notif-settlement", section: "Notifications · Financial",
-      label: "Settlements", sub: "When a debt is paid or settled",
-      icon: "check-circle", iconBg: colors.tealTint + "88", iconColor: colors.teal,
-      keywords: ["notification", "settlement", "paid", "debt", "financial"],
-      type: "toggle", value: notifPrefs.settlement,
-      onAction: () => updateNotifPref("settlement", !notifPrefs.settlement),
-    },
-    {
-      id: "notif-invite", section: "Notifications · Financial",
-      label: "Group invites", sub: "When someone invites you to a group",
-      icon: "users", iconBg: colors.tealTint + "88", iconColor: colors.teal,
-      keywords: ["notification", "invite", "group", "invitation"],
-      type: "toggle", value: notifPrefs.invite,
-      onAction: () => updateNotifPref("invite", !notifPrefs.invite),
-    },
-    // Appearance
-    {
-      id: "dark-mode", section: "Appearance",
-      label: "Dark Mode", sub: "Switch between light and dark theme",
-      icon: "moon", iconBg: colors.primaryLight, iconColor: colors.primary,
-      keywords: ["dark", "light", "mode", "theme", "appearance", "night"],
-      type: "toggle", value: isDark,
-      onAction: toggleDark,
-    },
-    {
-      id: "theme", section: "Appearance",
-      label: "Theme", sub: `Currently: ${THEME_META[themeId]?.label ?? themeId}`,
-      icon: "droplet", iconBg: colors.primaryLight, iconColor: colors.primary,
-      keywords: ["theme", "color", "appearance", "style", "palette"],
-      type: "navigate", displayValue: THEME_META[themeId]?.label,
-      onAction: () => { setSettingsQuery(""); },
-    },
-    // Security
-    {
-      id: "biometric", section: "Security",
-      label: `${biometricType || "Biometric"} Lock`,
-      sub: !biometricAvailable ? "Not available on this device" : "Require biometrics to open the app",
-      icon: "lock", iconBg: colors.primaryLight, iconColor: colors.primary,
-      keywords: ["biometric", "lock", "security", "fingerprint", "face id", "touch id", "password"],
-      type: "toggle", value: biometricEnabled,
-      onAction: async () => {
-        if (!biometricAvailable && !biometricEnabled) return;
-        if (!biometricEnabled) {
-          const ok = await unlock();
-          if (ok) { await setBiometricEnabled(true); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
-        } else {
-          showAlert("Disable Lock", "Remove biometric protection?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Remove", style: "destructive", onPress: () => setBiometricEnabled(false) },
-          ]);
-        }
-      },
-    },
-    // Preferences
-    {
-      id: "simplify-debts", section: "Preferences",
-      label: "Simplify Debts", sub: "Merge payments across friends for fewer transactions",
-      icon: "git-merge", iconBg: colors.tealTint, iconColor: colors.teal,
-      keywords: ["simplify", "debts", "payments", "merge", "preferences", "balance"],
-      type: "toggle", value: simplifyDebtsEnabled,
-      onAction: toggleSimplifyDebts,
-    },
-    {
-      id: "currency", section: "Preferences",
-      label: "Default Currency", sub: "Currency used for totals and new groups",
-      icon: "globe", iconBg: colors.accentTint, iconColor: colors.accent,
-      keywords: ["currency", "money", "dollar", "euro", "default", "preferences"],
-      type: "navigate", displayValue: `${selectedCurrencyInfo?.flag ?? ""} ${defaultCurrency}`,
-      onAction: () => setShowCurrencyPicker(true),
-    },
-    // Exchange Rates
-    {
-      id: "exchange-rates", section: "Exchange Rates",
-      label: "Refresh Exchange Rates", sub: hasRates ? `Updated ${formatRatesUpdated()}` : "Rates not yet loaded",
-      icon: "refresh-cw", iconBg: colors.primaryLight, iconColor: colors.primary,
-      keywords: ["exchange", "rates", "refresh", "currency", "ecb", "live"],
-      type: "action",
-      onAction: handleRefreshRates,
-    },
-    // Account
-    {
-      id: "sign-out", section: "Account",
-      label: "Sign Out", sub: "Log out of SplitEasy",
-      icon: "log-out", iconBg: "#FDECEA", iconColor: "#E53935",
-      keywords: ["sign out", "logout", "log out", "account", "exit"],
-      type: "navigate",
-      onAction: () => showAlert("Sign Out", "Are you sure you want to sign out?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Sign Out", style: "destructive", onPress: async () => {
-          await AsyncStorage.removeItem("@spliteasy_logged_in");
-          router.replace("/");
-        }},
-      ]),
-    },
-  ], [
-    colors, isDark, toggleDark, themeId, biometricType, biometricAvailable, biometricEnabled,
-    simplifyDebtsEnabled, toggleSimplifyDebts, defaultCurrency, selectedCurrencyInfo,
-    notifPrefs, updateNotifPref, hasRates, unlock, setBiometricEnabled,
-    handleRefreshRates,
-  ]);
-
-  const searchResults = useMemo(() => {
-    if (!isSearchActive) return [];
-    const q = settingsQuery.toLowerCase().trim();
-    return allSettingsItems.filter(item =>
-      item.label.toLowerCase().includes(q) ||
-      item.sub.toLowerCase().includes(q) ||
-      item.section.toLowerCase().includes(q) ||
-      item.keywords.some(k => k.includes(q))
-    );
-  }, [allSettingsItems, settingsQuery, isSearchActive]);
-
   return (
     <ScrollView
       ref={scrollRef}
@@ -397,109 +206,10 @@ export default function AccountScreen() {
       }
     >
       <View style={[styles.header, { paddingTop: topPad + 16 }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Account</Text>
-
-        {/* Search bar */}
-        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: isSearchActive ? colors.primary : "transparent" }]}>
-          <Feather name="search" size={16} color={isSearchActive ? colors.primary : colors.textTertiary} />
-          <TextInput
-            ref={searchRef}
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search settings…"
-            placeholderTextColor={colors.textTertiary}
-            value={settingsQuery}
-            onChangeText={setSettingsQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-            clearButtonMode="never"
-          />
-          {isSearchActive && (
-            <Pressable onPress={() => { setSettingsQuery(""); searchRef.current?.blur(); }}>
-              <View style={[styles.clearBtn, { backgroundColor: colors.textTertiary + "30" }]}>
-                <Feather name="x" size={11} color={colors.textTertiary} />
-              </View>
-            </Pressable>
-          )}
-        </View>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
       </View>
 
-      {/* ── Search results ─────────────────────────────────── */}
-      {isSearchActive ? (
-        <View style={styles.searchResultsWrap}>
-          {searchResults.length === 0 ? (
-            <View style={styles.searchEmpty}>
-              <Feather name="search" size={28} color={colors.textTertiary} />
-              <Text style={[styles.searchEmptyTitle, { color: colors.text }]}>No results</Text>
-              <Text style={[styles.searchEmptySub, { color: colors.textSecondary }]}>
-                Try "dark mode", "currency", or "notifications"
-              </Text>
-            </View>
-          ) : (
-            searchResults.map((item, idx) => {
-              const isLast = idx === searchResults.length - 1;
-              const prevSection = idx > 0 ? searchResults[idx - 1].section : null;
-              const showSection = item.section !== prevSection;
-              return (
-                <View key={item.id}>
-                  {showSection && (
-                    <Text style={[styles.searchSectionLabel, { color: colors.textSecondary }]}>
-                      {item.section}
-                    </Text>
-                  )}
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.searchResultRow,
-                      {
-                        backgroundColor: colors.surface,
-                        opacity: pressed ? 0.85 : 1,
-                        borderBottomWidth: isLast || (searchResults[idx + 1]?.section !== item.section) ? 0 : StyleSheet.hairlineWidth,
-                        borderBottomColor: colors.border,
-                        borderTopLeftRadius: showSection ? 14 : 0,
-                        borderTopRightRadius: showSection ? 14 : 0,
-                        borderBottomLeftRadius: (isLast || searchResults[idx + 1]?.section !== item.section) ? 14 : 0,
-                        borderBottomRightRadius: (isLast || searchResults[idx + 1]?.section !== item.section) ? 14 : 0,
-                      },
-                    ]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); item.onAction(); }}
-                  >
-                    <View style={[styles.rowIcon, { backgroundColor: item.iconBg }]}>
-                      <Feather name={item.icon as any} size={18} color={item.iconColor} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.rowLabel, { color: item.id === "sign-out" ? "#E53935" : colors.text }]}>
-                        {item.label}
-                      </Text>
-                      <Text style={[styles.rowSub, { color: colors.textSecondary }]}>{item.sub}</Text>
-                    </View>
-                    {item.type === "toggle" && item.value !== undefined ? (
-                      <Switch
-                        value={item.value}
-                        onValueChange={() => item.onAction()}
-                        trackColor={{ false: colors.switchOff, true: item.iconColor }}
-                        thumbColor="#FFFFFF"
-                        ios_backgroundColor={colors.switchOff}
-                      />
-                    ) : item.displayValue ? (
-                      <Text style={[styles.rowValue, { color: colors.textSecondary }]}>{item.displayValue}</Text>
-                    ) : item.type === "action" ? (
-                      <View style={[styles.refreshBtn, { backgroundColor: item.iconBg }]}>
-                        <Text style={[styles.refreshBtnText, { color: item.iconColor }]}>Refresh</Text>
-                      </View>
-                    ) : (
-                      <Feather name="chevron-right" size={16} color={item.id === "sign-out" ? "#E5393580" : colors.textTertiary} />
-                    )}
-                  </Pressable>
-                </View>
-              );
-            })
-          )}
-        </View>
-      ) : null}
-
-      {/* ── Full settings (hidden while searching) ─────────── */}
-      {isSearchActive ? null : (
-        <>
+      <>
 
       {/* Profile card */}
       <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
@@ -536,7 +246,6 @@ export default function AccountScreen() {
               <Feather name="edit-2" size={14} color={colors.textTertiary} style={{ marginLeft: 6 }} />
             </Pressable>
           )}
-          <Text style={[styles.profileSub, { color: colors.textSecondary }]}>SplitEasy User</Text>
           {currentUser.photo ? (
             <Pressable onPress={handleRemovePhoto} style={{ marginTop: 4 }}>
               <Text style={[styles.removePhotoText, { color: colors.danger }]}>Remove photo</Text>
@@ -573,101 +282,27 @@ export default function AccountScreen() {
       {/* Notifications */}
       <SectionTitle label="Notifications" />
       <View style={[styles.section, { shadowColor: colors.shadow }]}>
-
-        {/* — Expenses category — */}
-        <Pressable
-          style={[styles.notifCatRow, { backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
-          onPress={() => toggleNotifCat("expenses")}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: colors.primaryLight }]}>
-            <Feather name="dollar-sign" size={18} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: colors.text }]}>Expenses</Text>
-            <Text style={[styles.rowSub, { color: colors.textSecondary }]}>New, edits &amp; deletions</Text>
-          </View>
-          <Feather name={expandedNotifCats.includes("expenses") ? "chevron-up" : "chevron-down"} size={16} color={colors.textTertiary} />
-        </Pressable>
-        {expandedNotifCats.includes("expenses") && (
-          <View style={[styles.notifSubGroup, { borderColor: colors.border }]}>
-            <ToggleRow
-              icon="plus-circle" iconBg={colors.primaryLight + "88"} iconColor={colors.primary}
-              label="New expense" sub="Someone adds an expense to your group"
-              value={notifPrefs.expenseAdded} onToggle={() => updateNotifPref("expenseAdded", !notifPrefs.expenseAdded)}
-            />
-            <ToggleRow
-              icon="edit-2" iconBg={colors.primaryLight + "88"} iconColor={colors.primary}
-              label="Expense edited" sub="Someone modifies an existing expense"
-              value={notifPrefs.expenseEdited} onToggle={() => updateNotifPref("expenseEdited", !notifPrefs.expenseEdited)}
-            />
-            <ToggleRow
-              icon="trash-2" iconBg={colors.dangerLight ?? colors.primaryLight + "88"} iconColor={colors.danger}
-              label="Expense deleted" sub="Someone removes an expense from the group"
-              value={notifPrefs.expenseDeleted} onToggle={() => updateNotifPref("expenseDeleted", !notifPrefs.expenseDeleted)}
-              isLast
-            />
-          </View>
-        )}
-
-        {/* — Social category — */}
-        <Pressable
-          style={[styles.notifCatRow, { backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
-          onPress={() => toggleNotifCat("social")}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: colors.accentTint }]}>
-            <Feather name="message-circle" size={18} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: colors.text }]}>Social</Text>
-            <Text style={[styles.rowSub, { color: colors.textSecondary }]}>Comments &amp; reactions</Text>
-          </View>
-          <Feather name={expandedNotifCats.includes("social") ? "chevron-up" : "chevron-down"} size={16} color={colors.textTertiary} />
-        </Pressable>
-        {expandedNotifCats.includes("social") && (
-          <View style={[styles.notifSubGroup, { borderColor: colors.border }]}>
-            <ToggleRow
-              icon="message-square" iconBg={colors.accentTint + "88"} iconColor={colors.accent}
-              label="Comments" sub="Someone comments on an expense"
-              value={notifPrefs.comment} onToggle={() => updateNotifPref("comment", !notifPrefs.comment)}
-            />
-            <ToggleRow
-              icon="heart" iconBg={colors.accentTint + "88"} iconColor={colors.accent}
-              label="Reactions" sub="Someone reacts to an expense"
-              value={notifPrefs.reaction} onToggle={() => updateNotifPref("reaction", !notifPrefs.reaction)}
-              isLast
-            />
-          </View>
-        )}
-
-        {/* — Financial category — */}
-        <Pressable
-          style={[styles.notifCatRow, { backgroundColor: colors.surface }]}
-          onPress={() => toggleNotifCat("financial")}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: colors.tealTint }]}>
-            <Feather name="check-circle" size={18} color={colors.teal} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: colors.text }]}>Financial</Text>
-            <Text style={[styles.rowSub, { color: colors.textSecondary }]}>Settlements &amp; invites</Text>
-          </View>
-          <Feather name={expandedNotifCats.includes("financial") ? "chevron-up" : "chevron-down"} size={16} color={colors.textTertiary} />
-        </Pressable>
-        {expandedNotifCats.includes("financial") && (
-          <View style={[styles.notifSubGroup, { borderColor: colors.border }]}>
-            <ToggleRow
-              icon="check-circle" iconBg={colors.tealTint + "88"} iconColor={colors.teal}
-              label="Settlements" sub="When a debt is paid or settled"
-              value={notifPrefs.settlement} onToggle={() => updateNotifPref("settlement", !notifPrefs.settlement)}
-            />
-            <ToggleRow
-              icon="users" iconBg={colors.tealTint + "88"} iconColor={colors.teal}
-              label="Group invites" sub="When someone invites you to a group"
-              value={notifPrefs.invite} onToggle={() => updateNotifPref("invite", !notifPrefs.invite)}
-              isLast
-            />
-          </View>
-        )}
+        <ToggleRow
+          icon="plus-circle" iconBg={colors.primaryLight} iconColor={colors.primary}
+          label="New expense" sub="When someone adds an expense"
+          value={notifPrefs.expenseAdded} onToggle={() => updateNotifPref("expenseAdded", !notifPrefs.expenseAdded)}
+        />
+        <ToggleRow
+          icon="check-circle" iconBg={colors.tealTint} iconColor={colors.teal}
+          label="Settlements" sub="When a debt is paid or settled"
+          value={notifPrefs.settlement} onToggle={() => updateNotifPref("settlement", !notifPrefs.settlement)}
+        />
+        <ToggleRow
+          icon="users" iconBg={colors.tealTint} iconColor={colors.teal}
+          label="Group invites" sub="When someone invites you to a group"
+          value={notifPrefs.invite} onToggle={() => updateNotifPref("invite", !notifPrefs.invite)}
+        />
+        <ToggleRow
+          icon="message-square" iconBg={colors.accentTint} iconColor={colors.accent}
+          label="Comments" sub="When someone comments on an expense"
+          value={notifPrefs.comment} onToggle={() => updateNotifPref("comment", !notifPrefs.comment)}
+          isLast
+        />
       </View>
 
       {/* Appearance */}
@@ -774,14 +409,14 @@ export default function AccountScreen() {
       {/* Exchange Rates */}
       <SectionTitle label="Exchange Rates" />
       <View style={[styles.section, { shadowColor: colors.shadow }]}>
-        <View style={[styles.row, { backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
+        <View style={[styles.row, { backgroundColor: colors.surface }]}>
           <View style={[styles.rowIcon, { backgroundColor: colors.primaryLight }]}>
             <Feather name="refresh-cw" size={18} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.rowLabel, { color: colors.text }]}>Live Rates</Text>
             <Text style={[styles.rowSub, { color: colors.textSecondary }]}>
-              {hasRates ? `Updated ${formatRatesUpdated()} · ECB via frankfurter.app` : "Fetching rates…"}
+              {hasRates ? `Updated ${formatRatesUpdated()}` : "Not yet loaded"}
             </Text>
           </View>
           <Pressable
@@ -793,16 +428,6 @@ export default function AccountScreen() {
               ? <ActivityIndicator size="small" color={colors.primary} />
               : <Text style={[styles.refreshBtnText, { color: colors.primary }]}>Refresh</Text>}
           </Pressable>
-        </View>
-        <View style={[styles.row, { backgroundColor: colors.surface }]}>
-          <View style={[styles.rowIcon, { backgroundColor: colors.tealTint }]}>
-            <Feather name="info" size={18} color={colors.teal} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowSub, { color: colors.textSecondary, lineHeight: 18 }]}>
-              Multi-currency totals are converted to {defaultCurrency} using ECB daily rates. Rates are cached offline and refreshed on launch.
-            </Text>
-          </View>
         </View>
       </View>
 
@@ -838,8 +463,7 @@ export default function AccountScreen() {
 
       <Text style={[styles.version, { color: colors.textTertiary }]}>SplitEasy v1.0.0</Text>
 
-        </>
-      )}
+      </>
 
       <CurrencyPickerModal
         visible={showCurrencyPicker}
