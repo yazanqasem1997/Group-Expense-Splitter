@@ -1,0 +1,30 @@
+when searching for currency it minimizes or scalesd depending on list of results
+
+when graph has 12 entry its a dot, should be horizontal line
+
+audit trail disappears/doesnt show when i edit an expense
+
+recurring expenses are gone, i liked where they were
+
+when i enter a group keep the members list in another window when i press on a button that says members so i can declutter, when user decides who is involved in the payment default is everyone in the group otherwise they can edit who is involved in the payment during entry, people involved in a payment could be selected by checking with a tick the users from the bottom under 'split'
+
+when i enter a group keep the scheduled and the payments minimized let the user decide
+
+invidividual payments are taking up too much space, like in splitwise it could all be flat without borders around every entry and maybe very faint grey line for separation 
+
+in groups if a payment is under the + sign it doesnt show
+
+in individual payments dont mention 3w ago or general let it give date
+
+when adding payment always categorize they payment, therefore maybe increase its vocab to capture more words, otherwise it gives it a general theme/reciept icon. when the icon is chosen also remove that line and keep the icon next to the currency sign to declutter
+
+
+when adding a payment let the user decide if its single or recurring with a small button, default is single, but if they want recurring they go to another page, at the moment the recurring dropdown is just too cluttered
+
+
+do not change my maint tabs, if i ask for another page do it in the backend then user can go back to the previous page when they are done or completed entries
+
+
+settings tab change name to account, and i think we want to keep all headings then when pressed it takes user to another page in the backend, such as notifications at the moment has 4 items under it, we want to declutter
+
+show the user when the rates will update next, keeping the option to update if they press on refresh
