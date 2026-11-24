@@ -232,7 +232,7 @@ export default function ReceiptReviewScreen() {
   }, []);
 
   const lastTapRef = useRef(0);
-  const [showAdjust, setShowAdjust] = useState(true);
+  const [adjustField, setAdjustField] = useState<null | "discount" | "tip" | "tax">(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const loadReceipt = useCallback(async () => {
     if (!id) return;
@@ -1057,7 +1057,7 @@ export default function ReceiptReviewScreen() {
                        />
                      </View>
                   </View>
-                   <View style={styles.itemDetailGrid}>
+                   <View style={[styles.itemDetailGrid, editingItemId === item.id ? null : { display: "none" }]}>
                      <View style={styles.itemQuantityField}>
                        <Text style={[styles.itemFieldLabel, { color: colors.textSecondary }]}>Quantity</Text>
                        <TextInput
@@ -1151,128 +1151,73 @@ export default function ReceiptReviewScreen() {
             </View>
            </View>
 
-           <Pressable onPress={() => setShowAdjust(v => !v)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }} accessibilityRole="button">
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Tax, tip & discounts</Text>
-            <Feather name={showAdjust ? "chevron-up" : "chevron-down"} size={16} color={colors.textTertiary} />
-          </Pressable>
-          <View style={[styles.adjustmentCard, { backgroundColor: colors.surface }, showAdjust ? null : { display: "none" }]}>
-             <View style={styles.discountRow}>
-               <View style={styles.discountHeader}>
-                 <View>
-                   <Text style={[styles.discountTitle, { color: colors.text }]}>Discount</Text>
-                 </View>
-                 {manualDiscountAmount != null ? (
-                   <Text style={[styles.discountAmount, { color: colors.danger }]}>
-                     {formatAmount(manualDiscountAmount, receipt.currency ?? group?.currency ?? "USD")}
-                   </Text>
-                 ) : null}
-               </View>
-               <View style={styles.discountInputRow}>
-                 <View style={[styles.discountMode, { borderColor: colors.border }]}>
-                   {(["value", "percentage"] as const).map((mode) => (
-                     <Pressable
-                       key={mode}
-                       onPress={() => setDiscountMode(mode)}
-                       style={[
-                         styles.discountModeButton,
-                         { backgroundColor: discountMode === mode ? colors.primary : "transparent" },
-                       ]}
-                     >
-                       <Text style={[styles.discountModeText, { color: discountMode === mode ? "#fff" : colors.textSecondary }]}>
-                         {mode === "value" ? "Value" : "%"}
-                       </Text>
-                     </Pressable>
-                   ))}
-                 </View>
-                 <TextInput
-                   value={discountText}
-                   onChangeText={setDiscountText}
-                   keyboardType="decimal-pad"
-                   placeholder={discountMode === "percentage" ? "Percent" : "Amount"}
-                   placeholderTextColor={colors.textTertiary}
-                    style={[styles.discountInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
-                 />
-               </View>
-             </View>
-              <View style={styles.discountRow}>
-               <View style={styles.discountHeader}>
-                 <View>
-                   <Text style={[styles.discountTitle, { color: colors.text }]}>Tip</Text>
-                 </View>
-                 {tipAmount > 0 ? (
-                   <Text style={[styles.discountAmount, { color: colors.primary }]}>
-                     {formatAmount(tipAmount, receipt.currency ?? group?.currency ?? "USD")}
-                   </Text>
-                 ) : null}
-               </View>
-               <View style={styles.discountInputRow}>
-                 <View style={[styles.discountMode, { borderColor: colors.border }]}>
-                   {(["value", "percentage"] as const).map((mode) => (
-                     <Pressable
-                       key={mode}
-                       onPress={() => setTipMode(mode)}
-                       style={[
-                         styles.discountModeButton,
-                         { backgroundColor: tipMode === mode ? colors.primary : "transparent" },
-                       ]}
-                     >
-                       <Text style={[styles.discountModeText, { color: tipMode === mode ? "#fff" : colors.textSecondary }]}>
-                         {mode === "value" ? "Value" : "%"}
-                       </Text>
-                     </Pressable>
-                   ))}
-                 </View>
-                 <TextInput
-                   value={tipText}
-                   onChangeText={setTipText}
-                   onEndEditing={() => void updateReceiptAdjustment("tip", tipText, tipMode)}
-                   keyboardType="decimal-pad"
-                   placeholder={tipMode === "percentage" ? "Percent" : "Amount"}
-                   placeholderTextColor={colors.textTertiary}
-                    style={[styles.discountInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
-                 />
-               </View>
-             </View>
-              <View style={styles.discountRow}>
-               <View style={styles.discountHeader}>
-                 <View>
-                   <Text style={[styles.discountTitle, { color: colors.text }]}>VAT</Text>
-                 </View>
-                 {taxAmount > 0 ? (
-                   <Text style={[styles.discountAmount, { color: colors.primary }]}>
-                     {formatAmount(taxAmount, receipt.currency ?? group?.currency ?? "USD")}
-                   </Text>
-                 ) : null}
-           </View>
-               <View style={styles.discountInputRow}>
-                 <View style={[styles.discountMode, { borderColor: colors.border }]}>
-                   {(["value", "percentage"] as const).map((mode) => (
-                     <Pressable
-                       key={mode}
-                       onPress={() => setTaxMode(mode)}
-                       style={[
-                         styles.discountModeButton,
-                         { backgroundColor: taxMode === mode ? colors.primary : "transparent" },
-                       ]}
-                     >
-                       <Text style={[styles.discountModeText, { color: taxMode === mode ? "#fff" : colors.textSecondary }]}>
-                         {mode === "value" ? "Value" : "%"}
-                       </Text>
-                     </Pressable>
-                   ))}
-                 </View>
-                 <TextInput
-                   value={taxText}
-                   onChangeText={setTaxText}
-                   onEndEditing={() => void updateReceiptAdjustment("tax", taxText, taxMode)}
-                   keyboardType="decimal-pad"
-                   placeholder={taxMode === "percentage" ? "Percent" : "Amount"}
-                   placeholderTextColor={colors.textTertiary}
-                    style={[styles.discountInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
-                 />
-               </View>
-             </View>
-          </View>
+          {(() => {
+            const cur = receipt.currency ?? group?.currency ?? "USD";
+            const cells = [
+              { key: "discount" as const, label: "Discount", amount: manualDiscountAmount ?? 0, color: colors.danger },
+              { key: "tip" as const, label: "Tip", amount: tipAmount, color: colors.text },
+              { key: "tax" as const, label: "VAT", amount: taxAmount, color: colors.text },
+            ];
+            const field = adjustField;
+            const adj = field === "discount"
+              ? { mode: discountMode, setMode: setDiscountMode, text: discountText, setText: setDiscountText, save: null as null | (() => void) }
+              : field === "tip"
+                ? { mode: tipMode, setMode: setTipMode, text: tipText, setText: setTipText, save: () => void updateReceiptAdjustment("tip", tipText, tipMode) }
+                : field === "tax"
+                  ? { mode: taxMode, setMode: setTaxMode, text: taxText, setText: setTaxText, save: () => void updateReceiptAdjustment("tax", taxText, taxMode) }
+                  : null;
+            return (
+              <View style={[styles.card, { backgroundColor: colors.surface, paddingVertical: 10, marginBottom: 12 }]}>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: 0, marginBottom: 8 }]}>Tax, tip & discounts</Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {cells.map((cell) => (
+                    <Pressable
+                      key={cell.key}
+                      onPress={() => setAdjustField((prev) => (prev === cell.key ? null : cell.key))}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${cell.label}`}
+                      style={{
+                        flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 12, borderWidth: 1,
+                        borderColor: field === cell.key ? colors.primary : colors.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, color: colors.textSecondary }}>{cell.label}</Text>
+                      <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: cell.amount > 0 ? cell.color : colors.textTertiary, fontVariant: ["tabular-nums"] }}>
+                        {cell.amount > 0 ? `${cell.key === "discount" ? "−" : ""}${formatAmount(cell.amount, cur)}` : "—"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {adj ? (
+                  <View style={styles.discountInputRow}>
+                    <View style={[styles.discountMode, { borderColor: colors.border }]}>
+                      {(["value", "percentage"] as const).map((mode) => (
+                        <Pressable
+                          key={mode}
+                          onPress={() => adj.setMode(mode)}
+                          style={[styles.discountModeButton, { backgroundColor: adj.mode === mode ? colors.primary : "transparent" }]}
+                        >
+                          <Text style={[styles.discountModeText, { color: adj.mode === mode ? "#fff" : colors.textSecondary }]}>
+                            {mode === "value" ? "Amount" : "%"}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <TextInput
+                      value={adj.text}
+                      onChangeText={adj.setText}
+                      onEndEditing={adj.save ?? undefined}
+                      keyboardType="decimal-pad"
+                      placeholder={adj.mode === "percentage" ? "Percent" : "Amount"}
+                      placeholderTextColor={colors.textTertiary}
+                      autoFocus
+                      style={[styles.discountInput, { color: colors.text, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })()}
 
           <View style={[styles.reconciliationCard, { backgroundColor: colors.surface, borderColor: reviewStatus.color }]}>
             <View style={styles.reconciliationHeading}>
@@ -1397,12 +1342,12 @@ const styles = StyleSheet.create({
   payerValidationRow: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 12 },
   payerValidationText: { flex: 1, fontSize: 12, lineHeight: 17 },
   payerEmptyText: { fontSize: 13, marginTop: 12 },
-  itemRow: { paddingHorizontal: 12, paddingVertical: 13, borderWidth: 1, borderRadius: 16, marginBottom: 8 },
+  itemRow: { paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 16, marginBottom: 8 },
   itemHeading: { marginBottom: 5 },
   itemNumber: { fontSize: 12, fontWeight: "700" },
   uncertainLabel: { flex: 1, fontSize: 11, fontWeight: "700" },
   deleteButton: { padding: 4, marginLeft: 4 },
-  itemHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  itemHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
   itemFieldGrid: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
   itemNameField: { flex: 1 },
   itemPriceField: { width: 74 },
@@ -1414,10 +1359,10 @@ const styles = StyleSheet.create({
   itemAmount: { width: 74, minHeight: 34, fontSize: 14, textAlign: "left", paddingHorizontal: 7, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
   smallItemInput: { width: 74, minHeight: 34, borderWidth: 1, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 5, fontSize: 14 },
   itemWarning: { fontSize: 11, lineHeight: 15, marginTop: 4 },
-  memberPicker: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 7, marginTop: 8 },
-  memberChip: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 7 },
-  allMemberChip: { minWidth: 42, alignItems: "center" },
-  memberChipText: { fontSize: 12, fontWeight: "700" },
+  memberPicker: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 5, marginTop: 4 },
+  memberChip: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3 },
+  allMemberChip: { minWidth: 34, alignItems: "center" },
+  memberChipText: { fontSize: 11, fontWeight: "700" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 9 },
   totalName: { fontSize: 15, fontWeight: "600" },
   totalAmount: { fontSize: 15, fontWeight: "700" },
