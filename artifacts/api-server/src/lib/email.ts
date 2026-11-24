@@ -72,6 +72,32 @@ async function sendGmailEmail(message: EmailMessage): Promise<void> {
     text: `${message.text}\n\n---\nSplit Mate · support@infosplitmate.com\nNotification settings: ${OPEN_URL}?to=settings/notifications\nDon't want these emails? Unsubscribe: ${unsub}`,
     html: `${message.html}<p style="font-size:12px;color:#7D9599;margin-top:24px">Split Mate · <a href="mailto:support@infosplitmate.com" style="color:#7D9599">support@infosplitmate.com</a><br><a href="${OPEN_URL}?to=settings/notifications" style="color:#7D9599">Notification settings</a> · Don't want these emails? <a href="${unsub}" style="color:#7D9599">Stop these emails</a></p>`,
   };
+  // Preferred: send over HTTPS with Resend (works where SMTP ports are blocked, e.g. Railway).
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  if (resendKey) {
+    assertSafeHeaderValue(message.to, "recipient");
+    const fromAddr = (process.env.RESEND_FROM_EMAIL || process.env.SUPPORT_EMAIL_ALIAS || "").trim();
+    const replyAddr = (process.env.SUPPORT_EMAIL_ALIAS || fromAddr).trim();
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: `Split Mate <${fromAddr}>`,
+        to: [message.to],
+        reply_to: replyAddr,
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      logger.error({ status: res.status, recipient: message.to }, "Resend rejected email");
+      throw new Error("Resend rejected the email");
+    }
+    return;
+  }
+
   const { user, appPassword } = requiredSmtpConfig();
   assertSafeHeaderValue(message.to, "recipient");
 
@@ -82,6 +108,9 @@ async function sendGmailEmail(message: EmailMessage): Promise<void> {
     requireTLS: true,
     auth: { user, pass: appPassword },
     tls: { minVersion: "TLSv1.2" },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 15000,
   });
 
   try {

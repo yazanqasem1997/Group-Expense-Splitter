@@ -8,15 +8,14 @@
       "pnpm": "10.26.1",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "group-expense-splitter.replit.app",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZ3JvdXAtZXhwZW5zZS1zcGxpdHRlci5yZXBsaXQuYXBwJA",
-        "EXPO_PUBLIC_CLERK_PROXY_URL": "https://group-expense-splitter.replit.app/api/__clerk",
+        "EXPO_PUBLIC_DOMAIN": "api.splitmate.org",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_aGVscGZ1bC1zYWxtb24tNjg4My5jbGVyay5hY2NvdW50cy5kZXYk",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "ios": {
         "resourceClass": "default"
       },
-      "channel": "production"
+      "channel": "railway"
     }
   },
   "submit": {
