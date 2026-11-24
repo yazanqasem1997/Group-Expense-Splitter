@@ -44,12 +44,15 @@ export function configureNotificationHandler(): void {
   ]).catch(() => {});
 
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
+    handleNotification: async (n) => {
+      const quiet = (n.request.content.data as { type?: string } | undefined)?.type === "receipt_ready";
+      return {
+      shouldShowBanner: !quiet,
+      shouldShowList: !quiet,
       shouldPlaySound: false,
       shouldSetBadge: true,
-    }),
+      };
+    },
   });
   // A push arriving while the app is open triggers one refresh, instead of constant polling.
   Notifications.addNotificationReceivedListener(n => {
