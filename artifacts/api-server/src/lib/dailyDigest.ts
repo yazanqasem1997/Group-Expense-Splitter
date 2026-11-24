@@ -230,7 +230,7 @@ export async function runDailyDigest(force = false, sendEmail = true): Promise<D
   if (!force && (now < slot || (last && last.lastRunAt >= slot))) return { ran: false, emailed: false, reportId: null, suggestions: 0 };
   // Only the published app sends the scheduled 7am email; the development copy
   // (and any extra autoscale copies) would otherwise each send their own.
-  if (!force && process.env.REPLIT_DEPLOYMENT !== "1") return { ran: false, emailed: false, reportId: null, suggestions: 0 };
+  if (!force && !(process.env.REPLIT_DEPLOYMENT === "1" || process.env.NODE_ENV === "production")) return { ran: false, emailed: false, reportId: null, suggestions: 0 };
   if (!force) {
     // Claim today's slot atomically so two server copies can't both send.
     const claimed = await db.insert(jobRunsTable).values({ name: JOB, lastRunAt: now })
