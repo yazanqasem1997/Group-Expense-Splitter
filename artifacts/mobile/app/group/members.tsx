@@ -11,9 +11,11 @@ import {
   Text,
   View,
   Alert,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
+import { AmountText } from "@/components/AmountText";
 import { useApp } from "@/context/AppContext";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -30,6 +32,7 @@ export default function MembersScreen() {
   const isInviteMode = mode === "invite";
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [sheetMemberId, setSheetMemberId] = useState<string | null>(null);
   const groupForAdmin = getGroupById(String(id));
   const amAdmin = !!groupForAdmin && (groupForAdmin.adminIds ?? []).includes(currentUser.id);
   function removeFromGroup(memberId: string, name: string) {
@@ -231,7 +234,7 @@ export default function MembersScreen() {
           const isLast = idx === group.memberIds.length - 1 && pendingInvites.length === 0;
 
           return (
-            <Pressable disabled={!amAdmin || isMe}
+            <Pressable disabled={isMe}
               key={mid}
               style={({ pressed }) => [
                 styles.memberRow,
@@ -240,7 +243,7 @@ export default function MembersScreen() {
               ]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  removeFromGroup(mid, m.name);
+                setSheetMemberId(mid);
               }}
             >
               <Avatar
@@ -298,6 +301,70 @@ export default function MembersScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Member sheet: what they owe, and removal */}
+      {(() => {
+        const sm = sheetMemberId ? getMemberById(sheetMemberId) : null;
+        if (!sm) return null;
+        const debts = getGroupBalances(group.id);
+        const owes = debts.filter(d => d.fromId === sm.id).reduce((sum, d) => sum + d.amount, 0);
+        const owed = debts.filter(d => d.toId === sm.id).reduce((sum, d) => sum + d.amount, 0);
+        const hasDebts = owes > 0.004 || owed > 0.004;
+        const first = sm.name.split(" ")[0];
+        return (
+          <Modal visible transparent animationType="slide" onRequestClose={() => setSheetMemberId(null)}>
+            <View style={{ flex: 1, justifyContent: "flex-end" }}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setSheetMemberId(null)} accessibilityLabel="Close" />
+              <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: insets.bottom + 18, gap: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Avatar name={sm.name} color={sm.avatarColor} size={44} imageUri={sm.photo} />
+                  <Text style={{ flex: 1, fontSize: 17, fontFamily: "Inter_600SemiBold", color: colors.text }}>{sm.name}</Text>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 14, color: colors.textSecondary }}>Owes in this group</Text>
+                  <AmountText amount={owes} currency={group.currency} style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: owes > 0.004 ? colors.negative : colors.text }} />
+                </View>
+                {owed > 0.004 ? (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontSize: 14, color: colors.textSecondary }}>Is owed</Text>
+                    <AmountText amount={owed} currency={group.currency} style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.positive }} />
+                  </View>
+                ) : null}
+                {amAdmin ? (
+                  <>
+                    <Pressable
+                      disabled={hasDebts}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: hasDebts }}
+                      onPress={() => {
+                        setSheetMemberId(null);
+                        showAlert(`Remove ${first}?`, "They'll no longer see this group. Past expenses stay.", [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Remove", style: "destructive", onPress: () => leaveGroupMember(group.id, sm.id) },
+                        ]);
+                      }}
+                      style={{
+                        borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1,
+                        borderColor: hasDebts ? colors.border : colors.danger,
+                        borderStyle: hasDebts ? "dashed" : "solid",
+                      }}
+                    >
+                      <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: hasDebts ? colors.textTertiary : colors.danger }}>
+                        Remove from group
+                      </Text>
+                    </Pressable>
+                    {hasDebts ? (
+                      <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+                        You can't remove {first} until their debts are settled up.
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </View>
+            </View>
+          </Modal>
+        );
+      })()}
 
       {/* Bottom action bar */}
       <View style={[styles.actionBar, { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: Platform.OS === "web" ? 20 : insets.bottom + 12 }]}>
