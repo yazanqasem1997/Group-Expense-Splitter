@@ -541,7 +541,7 @@ router.post(
         return;
       }
 
-      // Already friends? Add them straight away - no invite to accept, no email.
+      // Has the app? Add them straight away and notify them. Only people without an account get an email.
       const friendUser = await friendAccount(invite!.invitedEmail, req.localUser!.id);
       if (friendUser) {
         const accepted = await addFriendDirectly(invite!, friendUser);
@@ -602,7 +602,7 @@ async function notifyAddedToGroup(groupId: string, groupName: string, creatorId:
   }
 }
 
-/** The account behind this email, if it is already a friend of the inviter (accepted request or a shared group). */
+/** The Split Mate account behind this email, if there is one: that person gets a notification instead of an email. */
 async function friendAccount(email: string | null | undefined, inviterId: string) {
   try {
     return await friendAccountInner(email, inviterId);
@@ -614,13 +614,7 @@ async function friendAccountInner(email: string | null | undefined, inviterId: s
   if (!email) return null;
   const [u] = await db.select().from(uT).where(dSql`lower(${uT.email}) = ${email.toLowerCase()}`).limit(1);
   if (!u || u.id === inviterId) return null;
-  const [fr] = await db.select({ id: frT.id }).from(frT).where(dAnd(
-    dEq(frT.status, "accepted"),
-    dOr(dAnd(dEq(frT.senderUserId, inviterId), dEq(frT.recipientUserId, u.id)), dAnd(dEq(frT.senderUserId, u.id), dEq(frT.recipientUserId, inviterId))),
-  )).limit(1);
-  if (fr) return u;
-  const shared = await db.execute(dSql`select 1 from ${gmT} a join ${gmT} b on a.group_id = b.group_id where a.user_id = ${inviterId} and b.user_id = ${u.id} limit 1`);
-  return (shared as unknown as { rows?: unknown[] }).rows?.length ? u : null;
+  return u;
 }
 
 /** Same as accepting the invite on their behalf. Returns the accepted invitation, or null to fall back to a normal invite. */

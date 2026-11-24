@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, groupJoinLinksTable, groupMembersTable, groupsTable } from "@workspace/db";
+import { actorName, pushToGroupExceptActor } from "../lib/push";
 import { requireAuth } from "../lib/auth";
 import { getMembership } from "../lib/authz";
 import { param } from "../lib/params";
@@ -161,6 +162,7 @@ router.post("/group-join/:token/accept", requireAuth, async (req, res): Promise<
     return;
   }
   const user = req.localUser!;
+  let joinedNew = false;
   const result = await db.transaction(async (tx) => {
     const [group] = await tx.select({
       id: groupsTable.id,
@@ -177,6 +179,7 @@ router.post("/group-join/:token/accept", requireAuth, async (req, res): Promise<
         eq(groupMembersTable.userId, user.id),
       )).limit(1);
     if (!existing) {
+      joinedNew = true;
       const memberKey = `m_${randomBytes(12).toString("base64url")}`;
       await tx.insert(groupMembersTable).values({
         groupId: group.id,
@@ -196,6 +199,15 @@ router.post("/group-join/:token/accept", requireAuth, async (req, res): Promise<
   if (!result) {
     res.status(404).json({ error: "This group is no longer accepting members." });
     return;
+  }
+  if (joinedNew) {
+    void pushToGroupExceptActor(
+      result.groupId,
+      user.id,
+      (groupName) => ({ title: groupName, body: `${actorName(user)} joined the group` }),
+      { type: "group_joined" },
+      "invite",
+    );
   }
   res.setHeader("Cache-Control", "no-store");
   res.json(result);

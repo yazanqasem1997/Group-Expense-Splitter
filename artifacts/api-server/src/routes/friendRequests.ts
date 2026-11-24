@@ -327,6 +327,13 @@ async function respondToRequest(req: Request, res: Response, status: "accepted" 
     res.status(404).json({ error: "Request not found" });
     return;
   }
+  if (status === "accepted") {
+    void filterByPref([updated.senderUserId], "friendRequest").then(ids => sendPushToUsers(ids, {
+      title: "Friend request accepted",
+      body: `${actorName(req.localUser)} accepted your friend request`,
+      data: { type: "friend_accepted" },
+    })).catch(() => {});
+  }
   res.setHeader("Cache-Control", "no-store");
   res.json(await presentRequest(updated, req.localUser!.id));
 }

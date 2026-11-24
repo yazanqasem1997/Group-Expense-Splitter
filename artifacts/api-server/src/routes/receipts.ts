@@ -589,14 +589,13 @@ router.post(
       }
       return receipt!;
     });
-    // The app was closed or backgrounded mid-scan: tell them it's ready.
-    if (!res.socket || res.socket.destroyed) {
-      void sendPushToUsers([req.localUser!.id], {
-        title: "Receipt ready",
-        body: "Your receipt is scanned. Tap to split it.",
-        data: { type: "receipt_ready", receiptId: result.id, groupId },
-      }).catch(() => {});
-    }
+    // Always send it: a phone backgrounded mid-scan keeps the socket open but never reads the answer.
+    // The app hides this banner itself when it is open.
+    void sendPushToUsers([req.localUser!.id], {
+      title: "Receipt ready",
+      body: "Your receipt is scanned. Tap to split it.",
+      data: { type: "receipt_ready", receiptId: result.id, groupId },
+    }).catch(() => {});
     res.status(201).json(await serializeReceipt(result.id));
   },
 );
