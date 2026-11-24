@@ -1,0 +1,86 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "I5k0KXKOR4fdCvES2r3HU"
+uri = "file://artifacts/mobile/assets/audio/settled-chime.wav"
+type = "audio"
+title = "Updated settlement sound"
+description = "A short, crisp payment-success cue with a soft tap and bright rising ching."
+logical_id = "ac3618c6-e6c8-4c8b-9a4b-9c03f23c05af"
+content_hash = "sha256:79fe7f441584f4c48704f31707584f833e89d978263df3764a1006728d41550c"
+size = 155276
+mtime_ms = 1792391911930
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:ef0a7e9a-185b-4188-9003-f37568d53325/ac3618c6-e6c8-4c8b-9a4b-9c03f23c05af/760b12e1-0680-46ca-b3fe-655e7fa0621d"
+storage_version_token = "1792391955052816"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "cRHPgMN86vHwJ0zFzg5dk"
+uri = "file://attached_assets/generated_audio/settlement-sample-1-crisp-ching.wav"
+type = "audio"
+title = "Sample 1 — Crisp ching"
+description = "A quick soft tap followed by a bright, rising metallic ching."
+logical_id = "fcf3532b-531f-4ead-b083-3beb59f0c4d8"
+content_hash = "sha256:ad4dd49d49f7e193890f4303aab41796769bce4364574efcb3eaca2c44b0ba3a"
+size = 155276
+mtime_ms = 1792392250678
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:ef0a7e9a-185b-4188-9003-f37568d53325/fcf3532b-531f-4ead-b083-3beb59f0c4d8/c1f3154b-42f9-46b7-b0d0-94fee0aa2085"
+storage_version_token = "1792392260370957"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "upIZRHwupupVrI055GxnE"
+uri = "file://attached_assets/generated_audio/settlement-sample-2-warm-double-bell.wav"
+type = "audio"
+title = "Sample 2 — Warm double bell"
+description = "Two round, warm bell notes with a gentle lingering finish."
+logical_id = "52c6db96-58f3-44ce-8ff6-798e820f6402"
+content_hash = "sha256:42586e80cc46b4bb2bf59a214b04e68960fa8b92c52dbb2f6d19df444b84280f"
+size = 167624
+mtime_ms = 1792392250866
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:ef0a7e9a-185b-4188-9003-f37568d53325/52c6db96-58f3-44ce-8ff6-798e820f6402/ffa1b648-d796-4214-bed2-168c3655c52e"
+storage_version_token = "1792392262305517"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "zOy0B73iMc2ZJ-fYAkq0i"
+uri = "file://attached_assets/generated_audio/settlement-sample-3-soft-tap-triad.wav"
+type = "audio"
+title = "Sample 3 — Soft tap + triad"
+description = "A subtle tap and a smooth three-note rising chime."
+logical_id = "05376da6-6fd7-42f0-ab0c-8b5d1806b1c7"
+content_hash = "sha256:63fe1fe5df5f8161edee1636792bbb606144971a7953b55aa7fedee68670dab5"
+size = 179972
+mtime_ms = 1792392251106
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:ef0a7e9a-185b-4188-9003-f37568d53325/05376da6-6fd7-42f0-ab0c-8b5d1806b1c7/6f6f99a9-3703-411f-8ac3-25d933f4030f"
+storage_version_token = "1792392264202677"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "oFPjRcVUgp6jJIR-XGDE4"
+uri = "file://attached_assets/generated_audio/settlement-sample-4-clean-digital-ping.wav"
+type = "audio"
+title = "Sample 4 — Clean digital ping"
+description = "A minimal, short electronic two-tone confirmation."
+logical_id = "9067c62e-3408-4eef-9e72-09b927ced42c"
+content_hash = "sha256:dfd02c2a60a76117c71879a867c861f9340d3971e7f910b6866cf6dbc53739be"
+size = 127052
+mtime_ms = 1792392251210
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:ef0a7e9a-185b-4188-9003-f37568d53325/9067c62e-3408-4eef-9e72-09b927ced42c/4d2201f1-f7bf-4d2c-ac06-e368ee5a664e"
+storage_version_token = "1792392266071854"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "7VKcbKRa1URG7OO1VOq7Z"
+uri = "file://attached_assets/generated_audio/settlement-sample-5-bright-sparkle.wav"
+type = "audio"
+title = "Sample 5 — Bright sparkle"
+description = "A brighter four-note chime with a soft shimmer at the end."
+logical_id = "3aaa0017-0859-48af-85ca-3af1b1539a96"
+content_hash = "sha256:da29daf9edb0819f2af5869b8187edfa754fd61aa19c8c5d0345a86eb17ca5e9"
+size = 190556
+mtime_ms = 1792392251634
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:ef0a7e9a-185b-4188-9003-f37568d53325/3aaa0017-0859-48af-85ca-3af1b1539a96/c6a68d1c-74c4-4b2a-a8a9-d273a4e4afd1"
+storage_version_token = "1792392267978515"
+content_type = "audio/wav"

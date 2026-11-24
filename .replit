@@ -1,0 +1,92 @@
+modules = ["nodejs-24", "python-base-3.13", "postgresql-16"]
+
+[[artifacts]]
+id = "artifacts/api-server"
+
+[[artifacts]]
+id = "artifacts/mockup-sandbox"
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "artifacts/mockup-sandbox: Component Preview Server"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "XegfDyZt7HqfW2Bb8Ghoy"
+isCanvasWorkflow = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/mockup-sandbox run dev"
+cwd = "./artifacts/mockup-sandbox"
+waitForPort = 8081
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "8081"
+BASE_PATH = "/__mockup"
+
+[[workflows.workflow]]
+name = "artifacts/mobile: expo"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/mobile"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = ""
+
+[[workflows.workflow]]
+name = "artifacts/api-server: API Server"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "3B4_FFSkEVBkAeYMFRJ2e"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = ""
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[nix]
+channel = "stable-25_05"
+
+[[ports]]
+localPort = 8082
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_ZGVjaWRpbmctY2F0dGxlLTE5LmNsZXJrLmFjY291bnRzLmRldiQ"
+RESEND_FROM_EMAIL = "support@infosplitmate.com"
+GMAIL_SMTP_USER = "support@infosplitmate.com"
+OWNER_EMAILS = "yazanqasem97@gmail.com,nader.jawhary98@gmail.com"
+DIGEST_TO = "yazanqasem97@gmail.com,nader.jawhary98@gmail.com"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-e2868862-8b9a-4980-82c9-f893cf44b070"

@@ -1,0 +1,55 @@
+Update the group expense timeline chart with the following functionality:
+
+1. **Time grouping selector**
+
+   * Add a compact segmented control above the chart with:
+
+     * **D** = Daily
+     * **W** = Weekly
+     * **M** = Monthly
+   * Let the user switch between the three views instantly without reloading.
+   * Default automatically based on the selected date range:
+
+     * Up to 31 days: Daily
+     * 32 days to 6 months: Weekly
+     * More than 6 months: Monthly
+   * The user’s manual selection should override the automatic default.
+   * Aggregate expenses correctly for each period while keeping the same overall total:
+
+     * Daily: calendar day
+     * Weekly: Monday to Sunday
+     * Monthly: calendar month
+
+2. **Chart format**
+
+   * Use a responsive stacked column chart.
+   * X-axis: time.
+   * Y-axis: total group spending in the group’s selected currency.
+   * Stack each column by expense category, such as accommodation, food, transport and activities.
+   * Show readable date labels appropriate to the selected grouping.
+   * On tap or hover, show the period, category amount and total amount for that period.
+   * Allow categories to be hidden or shown by tapping the legend.
+   * Handle missing periods by showing a zero-value gap or column so the time axis remains continuous.
+
+3. **Full-screen landscape view**
+
+   * Add an expand icon in the chart’s top-right corner.
+   * When pressed, open the chart in a true full-screen landscape layout.
+   * On supported mobile devices, request full-screen mode and lock the screen orientation to landscape after the user taps expand.
+   * If orientation locking is unsupported, show a clear “Rotate your phone for the best view” message.
+   * Use the entire landscape screen for the chart, with no app navigation or unrelated content visible.
+   * Keep the D/W/M selector, legend and close button available without covering the chart.
+   * Make the chart redraw to fill the available width and height after entering full screen or rotating the device.
+   * Provide a clearly visible close/minimize button and support the Escape key on desktop.
+   * Restore the chart to its original place and size when full-screen mode closes.
+   * Preserve the selected date range, D/W/M grouping and hidden categories when entering or leaving full screen.
+
+4. **Responsive behaviour**
+
+   * The normal embedded chart should fit its card without horizontal scrolling.
+   * The expanded version should prioritize a wide landscape layout.
+   * Reduce the number of x-axis labels when space is limited instead of overlapping them.
+   * Keep tooltips within the visible screen.
+   * Make all controls easy to tap on mobile.
+
+Use the project’s existing chart library and design system. Do not add another charting dependency unless the current library cannot support these requirements.

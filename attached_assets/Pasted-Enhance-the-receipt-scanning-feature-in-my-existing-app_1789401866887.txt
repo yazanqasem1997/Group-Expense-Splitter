@@ -1,0 +1,135 @@
+Enhance the receipt scanning feature in my existing app with FREE OCR, accurate itemization, numbered line items, and automatic arithmetic reconciliation.
+
+Inspect the existing app, scanning flow, technology stack, and data structure first. Implement the complete feature within the existing architecture and design.
+
+1. FREE OCR — NO PAID API DEPENDENCIES
+
+- Use free, open-source Tesseract.js for the web app, running directly in the user’s browser through a Web Worker.
+- Run image preparation, OCR, and receipt parsing on the user’s device to minimize server compute usage.
+- Do not introduce paid OCR services, LLM APIs, API keys, subscriptions, free trials, or automatic paid fallbacks.
+- If the app is native rather than browser-based, use a compatible free, on-device OCR implementation.
+- Reuse OCR workers, release resources appropriately, and cache OCR assets and language files.
+- Load language files only when needed.
+- Explain any remaining hosting, bandwidth, or storage implications. Zero OCR API fees does not mean the entire app has zero running costs.
+
+2. IMAGE CAPTURE AND PREPARATION
+
+- Support camera capture and image upload.
+- Handle JPEG/PNG and convert HEIC phone photos to a supported format where compatible with the app.
+- Correct orientation and skew; provide crop and rotate controls.
+- Preserve enough resolution to read small prices.
+- Apply conservative contrast enhancement when needed without erasing faint printing.
+- Validate file types and sizes and handle large images without freezing the interface.
+- Show progress and provide retry, retake, and manual-entry options for unreadable images or processing failures.
+
+3. EXTRACT AND ITEMIZE THE RECEIPT
+
+Enable structured OCR output, including text, word positions, bounding boxes, and available confidence scores.
+
+Build a layout-aware parser using coordinates, row alignment, column positions, and receipt keywords. Do not rely only on splitting text at line breaks.
+
+Extract when identifiable:
+- Merchant, date, and currency.
+- Each item’s original description, quantity, unit price, and printed line total.
+- Item-level discounts and separately charged modifiers.
+- Printed subtotal, tax/VAT, service charges, actual tip, receipt-level discounts, rounding adjustments, and final total.
+
+Handle:
+- English and Arabic receipts, including Arabic-Indic digits and right-to-left layouts.
+- Multiline descriptions.
+- Quantities printed separately from descriptions.
+- Fractional quantities and items sold by weight.
+- Different decimal and thousands separators.
+- Repeated purchases of the same product.
+- Bilingual descriptions of the same item without double-counting it.
+
+Distinguish purchased items from headers, tax summaries, payment amounts, change, loyalty information, and suggested tips.
+
+Preserve source text and image locations so extracted values can be checked. Keep OCR confidence separate from arithmetic validation.
+
+Never invent unreadable values. Store unavailable fields as null and flag ambiguous interpretations.
+
+4. NUMBER EVERY LINE ITEM
+
+- Number purchased items #1, #2, #3, etc., in receipt order.
+- Display:
+  Item number | Description | Quantity | Unit price | Line total | Check status
+- Display taxes, service charges, tips, and receipt-level discounts separately.
+- Renumber the displayed list after additions, deletions, splits, or merges.
+- Maintain stable internal item IDs so edits and renumbering do not break existing item assignments or bill splitting.
+
+5. CHECK ITEM CALCULATIONS
+
+- When quantity and unit price are available, calculate the expected line total and compare it with the printed line total.
+- Account for item discounts and separately charged modifiers exactly once, following the receipt’s pricing structure.
+- For a mismatch, identify the item number and show:
+  Printed amount | Calculated amount | Difference
+- If the receipt only prints a line amount, preserve it without fabricating quantity or unit price. Mark the quantity calculation as unavailable.
+- Never silently change scanned prices to force a match.
+
+6. RECONCILE THE ENTIRE RECEIPT
+
+Perform separate checks for:
+A. Individual item calculations.
+B. Sum of item amounts against the printed subtotal.
+C. Final calculated amount against the printed final total.
+
+Account for:
+- Whether line amounts and subtotals already include discounts.
+- Whether tax/VAT is included or added separately.
+- Receipt-level discounts, additional charges, actual tips, and explicit rounding adjustments.
+
+Do not:
+- Add included VAT again.
+- Apply the same discount or modifier twice.
+- Treat cash tendered, change, or suggested tips as charges.
+- Treat missing amounts as zero.
+- Assume a currency when the evidence is ambiguous.
+
+Use decimal-safe arithmetic with the currency’s correct precision, including currencies with three decimal places.
+
+Keep printed amounts separate from calculated amounts. Show the exact discrepancy instead of hiding it behind a broad tolerance. Flag unclear tax or discount treatment for review.
+
+A matching final total must not automatically clear uncertain OCR readings or individual item mismatches.
+
+7. EDITABLE REVIEW SCREEN
+
+Show the receipt image alongside a mobile-friendly, editable item list.
+
+Allow users to:
+- Edit descriptions, quantities, unit prices, line totals, currency, discounts, and charges.
+- Add or delete items.
+- Split or merge incorrectly parsed rows.
+- See the corresponding receipt location for an uncertain field where practical.
+
+Recalculate immediately after every edit while preserving the original OCR values for comparison.
+
+Display a reconciliation summary:
+- Sum of item amounts.
+- Applicable discounts and additional charges.
+- Calculated final total.
+- Printed receipt total.
+- Difference.
+- Arithmetic status: Balanced / Mismatch / Insufficient information.
+- Separate flags for uncertain OCR fields.
+
+Highlight affected item numbers. Require user review and confirmation before saving, and prevent duplicate saves. Integrate confirmed items with existing expense and bill-splitting functionality.
+
+8. VERIFY THE WORKING IMPLEMENTATION
+
+Test representative receipt images and compare results against manually checked item lists and totals.
+
+Include these cases:
+- Quantity 2 × unit price 25.00 = line total 50.00.
+- A total of 105.00 including 5.00 VAT remains 105.00.
+- An item discount is applied once.
+- Two separate purchases of the same product remain separate.
+- A description wrapping onto another line remains one item.
+- Three-decimal currency amounts retain their precision.
+- An unreadable price is flagged instead of guessed.
+- A deliberately incorrect item amount produces a visible discrepancy.
+- Editing or deleting an item updates numbering and reconciliation correctly.
+
+Verify that the scanning flow calls no paid OCR or AI services.
+
+Implement the complete flow, then summarize the changes, actual test results, remaining limitations, and any setup requirements. Clearly identify anything that has not been tested with real receipt images.

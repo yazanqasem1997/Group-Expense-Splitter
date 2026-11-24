@@ -1,0 +1,45 @@
+- [React Compiler for-of crash](react-compiler-forof.md) — avoid `for (const [k,v] of Object.entries(...))` inside hooks/components; use `Object.keys().forEach()` instead.
+- [Clerk Expo Auth](clerk-expo-auth.md) — v4/Core v3 setup, proxy wiring, custom screens, JIT user provisioning, bearer token transport.
+- [Public route auth loading](clerk-public-routes.md) — landing and legal routes must render while Clerk initializes; protected routes can remain gated.
+- [Production Backend](production-backend.md) — schema, routes, idempotency (atomic reservation), CORS, recurring scheduler, member identity model, known gaps.
+- [AppContext server migration](appcontext-server-migration.md) — bootstrap flow, runServerSync pattern, one-time import, local-only items, toast type ("warning" not "danger").
+- [Theme toggle pattern](theme-toggle.md) — useColorScheme() alone can't be overridden in-app; requires ThemeContext with AsyncStorage persistence wrapping the whole tree.
+- [AppAlert layering fix](appalert-modal.md) — AppAlert must use RN Modal (not absolute View) to render above other Modals; zIndex/elevation on Views cannot beat native Modal layer.
+- [Group feed architecture](group-feed.md) — group/[id].tsx uses a FeedItem union type combining Expense + Settlement, sorted by createdAt; audit log (AuditEntry[]) lives on each Expense.
+- [expo-file-system v57 API](expo-fs-v57.md) — v57 dropped legacy top-level exports; import from `expo-file-system/legacy` for cacheDirectory + writeAsStringAsync.
+- [Cross-platform exports](cross-platform-exports.md) — browser Excel uses a Blob download and browser PDF uses a dedicated print window; native exports use cached files and sharing.
+- [Currency type expansion](currency-type.md) — Currency is now `string` (not a union); CURRENCY_LIST exports ~155 CurrencyInfo objects; CURRENCY_SYMBOLS derived from it.
+- [Scroll-to-top tab fix](scroll-to-top-tab.md) — Classic layout: use `listeners={({ navigation }) => ({ tabPress: () => { if (navigation.isFocused()) ... } })}`. Native layout: check `usePathname()` segment vs TAB_PATHS map. Remove useScrollToTop from all tab screens.
+- [Native notification gestures](native-notification-gestures.md) — use gesture-handler Swipeable, not PanResponder; keyboard bars need zero KAV offset plus keyboard-aware safe-area padding.
+- [Keyboard-aware modal list](keyboard-aware-modal-list.md) — fixed-height FlatList in a bottom-sheet Modal needs KeyboardAvoidingView + keyboard-height listener, or results hide behind the keyboard.
+- [Activity unread dot](activity-unread-dot.md) — backend never creates notification rows for other members' actions; unread dot needs a bootstrap-diff heuristic to catch cross-device activity.
+- [Activity deletion details](activity-deletion-details.md) — deletion notifications need transaction snapshots because the active record is gone when users open them.
+- [Group icon categorization](group-icons.md) — infer monochrome group icons from names while preserving legacy emoji data for compatibility.
+- [Neutral appearance system](neutral-appearance.md) — Split Mate's landing/auth branding and logo use grayscale; keep semantic status colors meaningful.
+- [One-Offs scroll performance](one-offs-scroll-performance.md) — keep FlatList in control of vertical drags; avoid screen-wide responder capture and continuous decorative animation behind the feed.
+- [Recurring timezone arithmetic](recurring-timezone-arithmetic.md) — recurring dates use date-only calendar math in the creator timezone; legacy schedules fall back deterministically to UTC.
+- [Expo Go store lag](expo-go-store-lag.md) — Android store Expo Go can lag the latest SDK; use Expo's official SDK-specific APK for physical testing.
+- [OpenAPI declaration refresh](openapi-declaration-refresh.md) — after codegen, rebuild package declarations before typechecking consumers that resolve workspace dist output.
+- [Expo auth bootstrap ordering](expo-auth-bootstrap-ordering.md) — install the Clerk bearer-token getter inside AppProvider before authenticated bootstrap effects run.
+- [Receipt OCR parsing](receipt-ocr-parsing.md) — Azure prebuilt Receipt is the server-side primary; preserve structured confidence, nullable amounts, and manual review.
+- [Expense icon vocabulary](expense-icon-vocabulary.md) — icons are derived at render time from category+description via resolveIconKey, not persisted; keeps icons in sync without schema changes.
+- [Chat read receipts](chat-read-receipts.md) — map server member keys to stable app member IDs before rendering chat ticks or reader names.
+- [Spending share semantics](spending-share-semantics.md) — person analytics use assigned split shares; payment amounts are shown separately with the resulting net.
+- [Balance summary netting](balance-summary-netting.md) — use visible per-group balances, net first, then convert; avoid rebuilding totals from raw transactions.
+- [Shared group setting mapping](shared-group-setting-mapping.md) — every server-backed group setting needs both request and bootstrap mapping or refreshes can revert the UI.
+- [Offline row indicators](offline-row-indicators.md) — row-level sync badges use global offline/error state until per-record pending IDs exist.
+- [AsyncStorage UI responsiveness](asyncstorage-ui-responsiveness.md) — defer large JSON persistence until after active interactions so modal and keyboard gestures stay responsive.
+- [Account deletion policy](account-deletion-policy.md) — deletion is recoverable for 30 days; owned groups and their records are removed, other memberships are detached.
+- [Ended group lifecycle](ended-group-lifecycle.md) — ending a group archives it, but unsettled balances still drive periodic settle-up reminders until cleared.
+- [Settled group recurring expenses](settled-group-recurring.md) — settlement clears balances but leaves active recurring schedules running; users must pause or delete them manually.
+- [Expo audio feedback](expo-audio-sound-feedback.md) — use SDK-matched bundled expo-audio effects from the mobile workspace; keep playback non-blocking and defensive.
+- [Native Excel sharing](native-excel-sharing.md) — convert generated workbook blobs with FileReader before Expo file sharing; browser download and native sharing are separate paths.
+- [Dependency security overrides](dependency-security-overrides.md) — constrain automated audit fixes to framework-compatible major versions, especially Expo’s Babel toolchain.
+- [Email connector](resend-connector.md) — invitation email uses the connected Gmail API when no verified sending domain is available.
+- [Multi-payer expenses](multi-payer-expenses.md) — keep the primary payer for compatibility, but use split-level paid amounts for multi-person payment accounting.
+- [Receipt claim responsiveness](receipt-claim-responsiveness.md) — update claim chips optimistically and guard async responses so rapid taps stay responsive and consistent.
+- [Receipt payer rehydration](receipt-payer-rehydration.md) — reopening a linked receipt must derive payer selection and amounts from the saved expense, not the current user default.
+- [Locked transaction exchange rates](currency-rate-policy.md) — use the occurrence-date rate for each expense or settlement; recurring instances get their own locked rate.
+- [Contact matching privacy](contact-matching-privacy.md) — request permission, send only email addresses for one-time matching, and never retain or log the contact list.
+- [Friend QR flow](friend-qr-flow.md) — QR scans preview a profile and send a friend request; they never add someone without the recipient accepting.
+- [Group join QR](group-join-qr.md) — group QR scans are direct membership invites; joining requires sign-in and never creates a friend request.

@@ -1,0 +1,162 @@
+Fix and redesign the existing **Group spending** chart. The current Daily, Weekly and Monthly views use inconsistent x-axis values, irregular spacing and unclear date ranges.
+
+### 1. Separate the date range from D / W / M
+
+The **D / W / M selector must control aggregation only**:
+
+* **D:** group expenses by calendar day.
+* **W:** group expenses by calendar week.
+* **M:** group expenses by calendar month.
+
+Do not make D mean an unexplained “31-day period.” Do not count 30 days forward from the first expense.
+
+Add a separate date-range control, using the app’s existing date filter if one already exists. The chart should always use that selected range.
+
+If no date range has been selected, default to:
+
+* Start: date of the group’s first expense.
+* End: date of the group’s latest expense.
+* If the group has only one day of activity, display that full calendar week so the chart does not show one oversized bar.
+
+When the user changes D, W or M, preserve the same start date, end date, filters and total spending. Only the time buckets should change.
+
+### 2. Use a real continuous time axis
+
+Use actual date values or ISO date keys internally. Do not use formatted labels such as “Aug” or “17” as category keys.
+
+Generate every required time bucket between the selected start and end dates, including buckets with no expenses.
+
+* Daily: every calendar day.
+* Weekly: every Monday-to-Sunday calendar week.
+* Monthly: every calendar month.
+
+Insert zero totals for empty buckets so spacing remains continuous and gaps in spending are visible.
+
+Use one consistent timezone throughout aggregation and rendering to prevent expenses from moving into the wrong day.
+
+### 3. Correct x-axis formatting
+
+#### Daily view
+
+* Show one equally spaced position for every day.
+* Use labels such as `1 Aug`, `5 Aug`, `10 Aug`, `15 Aug`.
+* Reduce the number of visible text labels when space is limited, but keep every day represented.
+* Show the year once as secondary context when needed.
+* Do not display only `1`, `15` and `31` with a detached `Aug 26` label.
+
+#### Weekly view
+
+* Align every bucket to the start of a real calendar week.
+* Use labels based on the week’s start date, such as:
+
+  * `3 Aug`
+  * `10 Aug`
+  * `17 Aug`
+  * `24 Aug`
+* Never mix a month label like `Aug` with a day label like `17` as separate x-axis categories.
+* Tooltip format: `10–16 Aug 2026`.
+
+#### Monthly view
+
+* Use one equally spaced position for every calendar month.
+* Show labels such as `Mar`, `Apr`, `May`, `Jun`, `Jul`, `Aug`.
+* Show the year below the relevant group of months or include it where the year changes.
+* Tooltip format: `August 2026`.
+
+### 4. Range and density behaviour
+
+* Keep the same selected date range when switching between D, W and M.
+* If Daily produces too many columns, allow horizontal scrolling or zooming inside the expanded view instead of skipping dates.
+* Keep the embedded card uncluttered by showing fewer tick labels.
+* Weekly and Monthly views should normally fit the available card width.
+* Calculate bar widths from the number of buckets and available plot width.
+* Apply a reasonable maximum bar width so a single value does not become an excessively wide column.
+* Keep empty space proportional and centre the chart correctly.
+
+### 5. Data consistency
+
+For the same selected date range:
+
+* The total of all Daily bars must equal the total of all Weekly bars.
+* The total of all Weekly bars must equal the total of all Monthly bars.
+* Switching views must never change the overall expense total.
+* Each category must retain the same colour in every view.
+* Empty periods must equal zero.
+* Each expense must appear in exactly one time bucket.
+* Do not duplicate expenses at week or month boundaries.
+
+### 6. Tooltips
+
+On hover or tap, show:
+
+* Exact day, week range or month.
+* Total spending for that period.
+* Amount for each visible category.
+* “No expenses” for an empty period.
+
+Keep tooltips inside the visible chart area.
+
+### 7. Proper full-screen landscape expansion
+
+The current expand button does not create a real landscape chart. Fix it as follows:
+
+* The expand button must request browser full-screen mode for the chart container after the user taps it.
+* On supported mobile browsers, call the Screen Orientation API after entering full screen and request `landscape`.
+* Resize the chart to use the complete available screen width and height.
+* Hide app navigation, surrounding cards and unrelated content while expanded.
+* Keep only:
+
+  * Chart title
+  * Date range
+  * D / W / M control
+  * Category legend
+  * Close button
+  * Full-size chart
+* Use a landscape layout with controls in a compact top row and the chart filling the remaining space.
+* Use `100dvw` and `100dvh` for the expanded container.
+* Listen for:
+
+  * Full-screen changes
+  * Orientation changes
+  * Window resizing
+* After any of these events, recalculate the chart dimensions and call the chart library’s resize or reflow method.
+* Do not simply enlarge the existing portrait card.
+
+If orientation locking is unsupported, especially on some iPhone browsers:
+
+* Keep the full-screen chart responsive.
+* Display a small message: **“Rotate your phone for a wider view.”**
+* When the user manually rotates the device, immediately resize the chart to fill the landscape screen.
+
+When full screen closes:
+
+* Unlock orientation if it was locked.
+* Return the chart to its original card.
+* Preserve the selected date range, D / W / M mode, filters and hidden categories.
+* Support the Escape key on desktop.
+
+### 8. Visual cleanup
+
+* Give the plotting area more width and reduce unnecessary empty margins.
+* Keep y-axis labels readable without taking excessive space.
+* Use subtle gridlines.
+* Keep the legend on one compact row where possible.
+* Avoid oversized bars.
+* Avoid overlapping dates.
+* Make the active D / W / M option clear.
+* Ensure the chart works from approximately 320 px mobile width through full-screen landscape desktop width.
+
+Use the project’s existing chart library and update the existing chart component. Do not create a separate sample chart.
+
+Before completing the task, verify these cases:
+
+1. One expense on one day.
+2. Multiple expenses on the same day.
+3. Several days with no expenses.
+4. A date range crossing two months.
+5. A week crossing a month boundary.
+6. A date range crossing two years.
+7. Switching D → W → M keeps the same total.
+8. Full-screen expansion on desktop.
+9. Full-screen expansion and manual rotation on mobile.
+10. Closing full screen restores the original card correctly.

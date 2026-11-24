@@ -1,0 +1,121 @@
+{
+  "expo": {
+    "name": "Split Mate",
+    "slug": "split-mate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "mobile",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Split Mate uses the camera to scan receipts and QR codes for adding friends.",
+        "NSPhotoLibraryUsageDescription": "Split Mate lets you choose a receipt photo or profile picture from your library.",
+        "NSContactsUsageDescription": "Split Mate checks your contacts so you can find friends who already use the app. Contacts are not stored.",
+        "NSFaceIDUsageDescription": "Split Mate can use Face ID to lock the app.",
+        "NSMicrophoneUsageDescription": "Split Mate does not record audio; this is required by the camera module."
+      },
+      "bundleIdentifier": "com.yazanqasem.splitmate",
+      "buildNumber": "1",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
+    },
+    "android": {
+      "package": "com.yazanqasem.splitmate",
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0E7C86"
+        }
+      ],
+      "expo-web-browser",
+      "expo-secure-store",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Split Mate shows your contacts on this device when you choose Find friends. Only email addresses are checked to match existing users; names and phone numbers stay on your device."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Split Mate uses your camera to scan receipts and friends' QR codes.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Split Mate to use Face ID to unlock your account."
+        }
+      ],
+      "expo-notifications",
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Split Mate needs access to your photos so you can add a receipt or a profile picture.",
+          "cameraPermission": "Split Mate uses your camera to scan receipts and take a profile picture."
+        }
+      ],
+      [
+        "@sentry/react-native",
+        {
+          "organization": "yazan-qasem",
+          "project": "split-mate",
+          "url": "https://de.sentry.io/"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8fc175a7-86c2-49f4-9e39-fc2aa590391a"
+      }
+    },
+    "owner": "qyaz",
+    "updates": {
+      "url": "https://u.expo.dev/8fc175a7-86c2-49f4-9e39-fc2aa590391a"
+    }
+  }
+}

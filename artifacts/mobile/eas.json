@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "production": {
+      "pnpm": "10.26.1",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "group-expense-splitter.replit.app",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZ3JvdXAtZXhwZW5zZS1zcGxpdHRlci5yZXBsaXQuYXBwJA",
+        "EXPO_PUBLIC_CLERK_PROXY_URL": "https://group-expense-splitter.replit.app/api/__clerk",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "ios": {
+        "resourceClass": "default"
+      },
+      "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6835761115",
+        "appleTeamId": "WU42UWUWLQ"
+      }
+    }
+  }
+}

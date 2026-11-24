@@ -1,0 +1,61 @@
+~/workspace$ ^[[200~cd ~/workspace/artifacts/mobile
+cd ~/workspace/artifacts/mobilebash: cd: command not found
+~/workspace$ npx expo login~cd ~/workspace/artifacts/mobile
+npx expo login
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Need to install the following packages:
+expo@57.0.23
+Ok to proceed? (y) cd ~/workspace/artifacts/mobile
+
+npm error canceled
+npm notice
+npm notice New minor version of npm available! 11.6.2 -> 11.19.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.1
+npm notice To update run: npm install -g npm@11.19.1
+npm notice
+npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-09-15T18_01_17_004Z-debug-0.log
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Need to install the following packages:
+expo@57.0.23
+Ok to proceed? (y) Y
+
+npm warn deprecated uuid@7.0.3: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+Log in to EAS with email or username (exit and run 'npx expo login --help' for other login options)
+✔ Email or username … Yazanqasem97@gmail.com
+✔ Password … ************
+~/workspace$ npx expo start --tunnel
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Starting project at /home/runner/workspace
+ConfigError: Cannot determine the project's Expo SDK version because the module `expo` is not installed. Install it with `npm install expo` and try again.
+~/workspace$ npx expo start --tunnel
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Starting project at /home/runner/workspace
+ConfigError: Cannot determine the project's Expo SDK version because the module `expo` is not installed. Install it with `npm install expo` and try again.
+~/workspace$ ^C
+~/workspace$ npx expo start --tunnel
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Starting project at /home/runner/workspace
+ConfigError: Cannot determine the project's Expo SDK version because the module `expo` is not installed. Install it with `npm install expo` and try again.
+~/workspace$ npm install expo
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+npm error Cannot read properties of null (reading 'matches')
+npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-09-15T18_03_09_443Z-debug-0.log
+~/workspace$ npx expo start --tunnel
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Starting project at /home/runner/workspace
+ConfigError: Cannot determine the project's Expo SDK version because the module `expo` is not installed. Install it with `npm install expo` and try again.
+~/workspace$ npx install expo
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+npm error could not determine executable to run
+npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-09-15T18_04_40_633Z-debug-0.log
+~/workspace$ ^C
+~/workspace$ 
+

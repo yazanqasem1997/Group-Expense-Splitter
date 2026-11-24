@@ -1,0 +1,69 @@
+Recreate the **visual design and layout** of the attached Balances reference. Focus on matching its appearance precisely, while keeping the app’s existing balance calculations and actions unchanged.
+
+### Overall container
+
+* Place the entire Balances section inside one clean rounded panel.
+* Header layout:
+
+  * **Balances** title at the top left.
+  * Small grey subtitle underneath: **“Outstanding payments between members”**
+  * Small circular balance-count badge at the top right.
+* Follow the app’s existing light/dark theme rather than forcing the reference image’s dark colours.
+
+### Balance row design
+
+Each settlement must be one horizontal row with four distinct areas:
+
+```text
+[Payer box]  →  [Receiver box]  [Amount + Settle]
+```
+
+Do not wrap each settlement inside another visible card. The two member boxes themselves should provide the visual structure.
+
+### Member boxes
+
+* Show the payer and receiver in two separate, equal-sized rounded boxes.
+* Both boxes must have exactly the same width and height.
+* Centre the avatar above the member’s name.
+* Use a small circular avatar with initials.
+* Keep the name centred and directly below the avatar.
+* Use a subtle border and slightly different surface colour from the background.
+* Do not show “owes,” “receives,” or any extra description inside the boxes.
+
+### Arrow
+
+* Place one simple right-facing arrow exactly between the two member boxes.
+* Vertically centre it with the boxes.
+* Use a muted grey colour.
+* Do not add text around the arrow; its meaning is already clear.
+
+### Amount and action
+
+Create a narrow right-side column:
+
+* Display the amount at the top in green.
+* Place the compact pill-shaped **Settle** button directly underneath.
+* Right-align the amount and button.
+* Keep enough fixed width so amounts such as `€1,119.40` do not wrap or overlap.
+
+### Spacing and proportions
+
+Use a grid similar to:
+
+```css
+grid-template-columns:
+  minmax(95px, 1fr)
+  20px
+  minmax(95px, 1fr)
+  72px;
+```
+
+* Keep approximately 8–12px between rows.
+* Member boxes should be approximately 68–76px high.
+* Avatars should be approximately 28–32px.
+* Keep padding compact and balanced.
+* Avoid excessive empty space.
+* Do not stack the member boxes vertically on normal phone widths.
+* Reduce gaps and box width slightly on narrow phones while preserving the same horizontal arrangement.
+
+The final design should visually match the attached reference: two clear member boxes, a centred arrow, and a separate amount/action column. Do not redesign it as a text sentence, table, or single combined member card.

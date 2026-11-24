@@ -1,0 +1,32 @@
+I want to add a receipt scanning feature to my Splitwise-style expense app, using Azure AI Document Intelligence (prebuilt Receipt model, F0 free tier).
+
+I've already created the Azure resource and stored two secrets in Replit:
+- AZURE_DOCUMENT_INTELLIGENCE_KEY
+- AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT
+
+1. On the group detail screen, change the "+" button into a small expanding FAB with two icons: a receipt icon (existing "Add expense manually" flow — don't touch it) and a camera icon ("Scan receipt" — new). This should add zero extra taps compared to today for either path.
+
+2. "Scan receipt" opens the camera/upload picker. User takes or uploads a photo of a receipt.
+
+3. Send the image to Azure Document Intelligence using the prebuilt Receipt model (prebuilt-receipt). Use the AZURE_DOCUMENT_INTELLIGENCE_KEY and AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT secrets — never hardcode them. This call must happen server-side (not from the client), so the key isn't exposed in the frontend.
+
+4. Parse the API response into:
+   - Line items: name, price, quantity (from the Items array)
+   - Merchant name, subtotal, tax, tip, and total (from the corresponding fields the model returns)
+   - Note: the F0 tier only processes the first 2 pages of a document — fine for receipts, but don't assume multi-page support.
+
+5. Show one combined screen (not a multi-step wizard):
+   - Add Expense fields at the top (amount, description) pre-filled from the parsed total and merchant name, editable.
+   - Below that, a checklist of parsed line items, each with an editable name/price (in case of a misread) and a way for each group member to tap/claim it. Support multiple people claiming one item.
+   - A running per-person total that updates live as items are claimed.
+   - If parsed items don't sum to the parsed total, show an inline warning rather than blocking — let the user adjust manually.
+
+6. Sync item claims in real time across group members viewing the same receipt session (use our existing real-time mechanism if we have one; otherwise polling is fine for now).
+
+7. On save, distribute tax/tip proportionally across each person's claimed subtotal, and pass the final per-person amounts into the existing expense-saving logic using the "Exact amounts" split (not equal split).
+
+8. Data model: store the original receipt image, the raw Document Intelligence response (for debugging/reprocessing later), parsed items, and per-user claims linked to the resulting expense, so it can be viewed/edited later from the expense detail screen.
+
+9. Handle API errors gracefully (e.g. if the free tier's 500 pages/month limit is hit, or the image is unreadable) — show a clear message and let the user fall back to manual entry.
+
+Create this in the same visual style and component patterns we've already been using in the app. Don't change anything else in the app that I haven't asked you to change here.

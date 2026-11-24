@@ -1,0 +1,65 @@
+Update the mobile pie chart to match the attached reference.
+
+### Label behaviour
+
+* Show percentage labels inside slices only when they fit comfortably.
+* For small slices where the percentage does not fit, draw a thin leader line from the slice to an external percentage label.
+* The leader line should:
+
+  1. Start at the outer edge of the slice.
+  2. Extend slightly outward.
+  3. Bend horizontally toward the label.
+* Place labels on the left or right according to the slice’s midpoint.
+* Keep the label close to its slice so the relationship remains obvious.
+
+### Prevent labels from leaving the screen
+
+Calculate all positions using the chart container’s actual dimensions, not the viewport or fixed pixel coordinates.
+
+* Reserve safe space around the pie for external labels.
+* Reduce the pie radius slightly on mobile to create this space.
+* Keep every line and label within the chart card’s left and right padding.
+* Clamp calculated label positions to the container boundaries.
+* Never allow text to be clipped, hidden or positioned off-screen.
+* Recalculate positions whenever the screen size or orientation changes.
+
+### Prevent overlapping labels
+
+Handle labels separately on the left and right sides:
+
+* Sort external labels vertically.
+* Maintain sufficient vertical spacing between them.
+* Shift overlapping labels up or down.
+* Redraw each leader line to the label’s final adjusted position.
+* Keep labels readable at a minimum of 12px.
+* Do not make text extremely small to force it into a slice.
+
+Use a sensible internal-label threshold, approximately 8%, but determine whether a label fits using the slice’s actual available space as well.
+
+### Guaranteed visibility
+
+Every category’s percentage must always appear in at least one guaranteed location:
+
+* Inside the slice when it fits.
+* Beside the pie with a leader line when it does not.
+* Also in the legend below the chart with the category name, percentage and amount.
+
+If there are too many tiny slices to place all external labels without collisions, prioritize clean leader-line labels for the available space and rely on the complete legend for the remaining values. Never place labels beyond the card.
+
+### Responsive chart
+
+* Use a responsive SVG viewBox or the chart library’s responsive dimensions.
+* Recalculate the pie radius, centroids, callout positions and collision spacing with a `ResizeObserver`.
+* Keep the pie centred after space is reserved for labels.
+* On tap or hover, show the category, percentage and currency amount in a tooltip within the card.
+* Preserve the existing data, colours, filters and calculations.
+
+Test the layout with slices of:
+
+* 49%
+* 25%
+* 13%
+* 7%
+* 6%
+
+Also test multiple 1–3% slices, narrow mobile screens and landscape orientation. No percentage or leader line should leave the visible chart card.

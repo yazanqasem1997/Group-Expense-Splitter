@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react/*": [
+        "./node_modules/@types/react/*"
+      ]
+    }
+  },
+  "//": "Typecheck-only: pins React types to 19.3 for libraries that would otherwise pick up an older hoisted copy. Not read by the bundler."
+}

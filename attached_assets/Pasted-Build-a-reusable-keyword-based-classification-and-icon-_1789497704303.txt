@@ -1,0 +1,1642 @@
+Build a reusable keyword-based classification and icon system for both:
+
+1. Expense records in the **Expenses tab**
+2. Individual entries in the **Itemization section**
+
+The system must return two separate values:
+
+* `category`: the high-level expense category
+* `iconKey`: the most relevant specific icon for the expense or item
+
+For example:
+
+* `Mineral water 500ml` → category: `Food & Beverages`, iconKey: `water`
+* `Cappuccino` → category: `Food & Beverages`, iconKey: `coffee`
+* `Uber trip` → category: `Transport`, iconKey: `taxi`
+* `Emirates flight` → category: `Transport`, iconKey: `flight`
+* `Hotel room` → category: `Accommodation`, iconKey: `hotel`
+
+Use the high-level category for filters, totals, charts and reporting. Use the specific icon to make individual expenses and itemized entries easier to recognize.
+
+## High-level categories
+
+Use these exact category names:
+
+1. `Food & Beverages`
+2. `Accommodation`
+3. `Transport`
+4. `Activities & Entertainment`
+5. `Shopping`
+6. `Health & Personal Care`
+7. `Bills & Utilities`
+8. `Fees & Taxes`
+9. `Other`
+
+Do not create additional high-level categories automatically.
+
+## Icon implementation
+
+Use the project’s existing icon library. If Lucide React is already installed, use Lucide icons.
+
+Create one central icon registry. Store stable internal `iconKey` values in the database or classification result rather than storing React components or SVG markup.
+
+Example structure:
+
+```ts
+type ExpenseCategory =
+  | "Food & Beverages"
+  | "Accommodation"
+  | "Transport"
+  | "Activities & Entertainment"
+  | "Shopping"
+  | "Health & Personal Care"
+  | "Bills & Utilities"
+  | "Fees & Taxes"
+  | "Other";
+
+type ExpenseIconKey =
+  | "food"
+  | "water"
+  | "coffee"
+  | "soft-drink"
+  | "alcohol"
+  | "groceries"
+  | "dessert"
+  | "hotel"
+  | "home"
+  | "flight"
+  | "taxi"
+  | "car"
+  | "fuel"
+  | "parking"
+  | "train"
+  | "bus"
+  | "metro"
+  | "boat"
+  | "bike"
+  | "ticket"
+  | "cinema"
+  | "museum"
+  | "music"
+  | "sports"
+  | "nightlife"
+  | "tour"
+  | "shopping"
+  | "clothing"
+  | "electronics"
+  | "gift"
+  | "pharmacy"
+  | "medical"
+  | "personal-care"
+  | "salon"
+  | "spa"
+  | "laundry"
+  | "electricity"
+  | "internet"
+  | "phone"
+  | "gas"
+  | "water-utility"
+  | "tax"
+  | "fee"
+  | "delivery-fee"
+  | "tip"
+  | "bank-fee"
+  | "other";
+```
+
+Suggested Lucide icon mapping:
+
+```ts
+const iconRegistry = {
+  food: Utensils,
+  water: GlassWater,
+  coffee: Coffee,
+  "soft-drink": CupSoda,
+  alcohol: Wine,
+  groceries: ShoppingBasket,
+  dessert: CakeSlice,
+
+  hotel: Hotel,
+  home: House,
+
+  flight: Plane,
+  taxi: CarTaxiFront,
+  car: CarFront,
+  fuel: Fuel,
+  parking: CircleParking,
+  train: TrainFront,
+  bus: BusFront,
+  metro: TramFront,
+  boat: Ship,
+  bike: Bike,
+
+  ticket: Ticket,
+  cinema: Clapperboard,
+  museum: Landmark,
+  music: Music,
+  sports: Dumbbell,
+  nightlife: PartyPopper,
+  tour: Map,
+
+  shopping: ShoppingBag,
+  clothing: Shirt,
+  electronics: Smartphone,
+  gift: Gift,
+
+  pharmacy: Pill,
+  medical: Stethoscope,
+  "personal-care": HeartPulse,
+  salon: Scissors,
+  spa: Sparkles,
+  laundry: WashingMachine,
+
+  electricity: Zap,
+  internet: Wifi,
+  phone: Smartphone,
+  gas: Flame,
+  "water-utility": Droplets,
+
+  tax: ReceiptText,
+  fee: CircleDollarSign,
+  "delivery-fee": Truck,
+  tip: HandCoins,
+  "bank-fee": Landmark,
+
+  other: Shapes
+};
+```
+
+If a suggested icon is unavailable in the installed version, replace it with the closest available icon. Do not install another icon library only for one missing icon.
+
+## Text normalization
+
+Before attempting a match, normalize the expense or item text:
+
+1. Convert it to lowercase.
+2. Remove leading and trailing spaces.
+3. Replace repeated spaces with a single space.
+4. Remove punctuation that does not affect meaning.
+5. Normalize accented characters where appropriate.
+6. Keep both the original text and normalized text.
+7. Remove quantity and packaging expressions from the matching copy:
+
+   * `x2`
+   * `2 x`
+   * `500ml`
+   * `1.5l`
+   * `250g`
+   * `2kg`
+   * `pack`
+   * `packet`
+   * `bottle`
+   * `pcs`
+8. Do not remove words that indicate the item’s meaning.
+9. Use whole-word or phrase matching to avoid false matches.
+10. Support basic singular and plural matching.
+
+Examples:
+
+* `Mineral Water 500ML x2` → `mineral water`
+* `UBER TRIP #9281` → `uber trip`
+* `Hotel Room – 2 Nights` → `hotel room nights`
+
+## Classification priority
+
+Apply matching rules in this exact order:
+
+1. User-created rules
+2. High-priority contextual phrases
+3. Exact normalized item or expense matches
+4. Known merchant matches
+5. Whole-phrase keyword matches
+6. Whole-word keyword matches
+7. Conservative fuzzy matching
+8. Parent expense context for itemized entries
+9. Existing manually selected category
+10. `Other`
+
+Do not allow a weak fuzzy match to override a strong exact or phrase match.
+
+Return:
+
+```ts
+{
+  category: "Food & Beverages",
+  iconKey: "water",
+  confidence: 0.98,
+  matchedRule: "exact_alias:mineral water",
+  source: "automatic"
+}
+```
+
+## Food & Beverages rules
+
+### Water
+
+Assign:
+
+* Category: `Food & Beverages`
+* Icon: `water`
+
+Keywords and phrases:
+
+* water
+* bottled water
+* drinking water
+* mineral water
+* still water
+* sparkling water
+* soda water
+* spring water
+* tonic water
+* flavoured water
+* flavored water
+* coconut water
+* aqua
+* mineral wtr
+* wtr
+* evian
+* perrier
+* san pellegrino
+* aquafina
+* dasani
+* volvic
+* fiji water
+* voss
+
+Water must not become `Other`.
+
+A bottled or drinking-water item remains `Food & Beverages`, even when the parent expense was entered manually.
+
+### Coffee and hot drinks
+
+Assign:
+
+* Category: `Food & Beverages`
+* Icon: `coffee`
+
+Keywords:
+
+* coffee
+* café
+* cafe
+* espresso
+* americano
+* cappuccino
+* latte
+* flat white
+* macchiato
+* mocha
+* cortado
+* karak
+* tea
+* green tea
+* black tea
+* matcha
+* hot chocolate
+* starbucks
+* costa coffee
+* coffee shop
+
+### Soft drinks and juices
+
+Assign:
+
+* Category: `Food & Beverages`
+* Icon: `soft-drink`
+
+Keywords:
+
+* soft drink
+* soda
+* coke
+* coca cola
+* coca-cola
+* pepsi
+* sprite
+* fanta
+* seven up
+* 7up
+* juice
+* orange juice
+* apple juice
+* smoothie
+* milkshake
+* lemonade
+* iced tea
+* energy drink
+* red bull
+
+### Alcohol
+
+Assign:
+
+* Category: `Food & Beverages`
+* Icon: `alcohol`
+
+Keywords:
+
+* alcohol
+* beer
+* lager
+* wine
+* champagne
+* prosecco
+* cocktail
+* mocktail
+* whisky
+* whiskey
+* vodka
+* gin
+* rum
+* tequila
+* liquor
+* spirits
+* pint
+
+### Restaurants and prepared food
+
+Assign:
+
+* Category: `Food & Beverages`
+* Icon: `food`
+
+Keywords:
+
+* restaurant
+* cafe
+* cafeteria
+* diner
+* bistro
+* brasserie
+* takeaway
+* takeout
+* food delivery
+* meal
+* breakfast
+* lunch
+* dinner
+* brunch
+* burger
+* sandwich
+* shawarma
+* pizza
+* pasta
+* steak
+* chicken
+* meat
+* fish
+* seafood
+* sushi
+* rice
+* noodles
+* soup
+* salad
+* kebab
+* dessert
+* ice cream
+* pastry
+* croissant
+* bakery
+* McDonald’s
+* KFC
+* Burger King
+* Subway
+* Deliveroo
+* Talabat
+* Noon Food
+
+Specific prepared-food keywords may use more specific food icons if they already exist in the project, but their high-level category must remain `Food & Beverages`.
+
+### Groceries
+
+Assign:
+
+* Category: `Food & Beverages`
+* Icon: `groceries`
+
+Keywords:
+
+* groceries
+* grocery
+* supermarket
+* hypermarket
+* market
+* minimart
+* convenience store
+* Carrefour
+* Spinneys
+* Waitrose
+* Lulu
+* Choithrams
+* Union Coop
+* milk
+* bread
+* eggs
+* cheese
+* fruit
+* vegetables
+* cereal
+* flour
+* sugar
+* snacks
+* crisps
+* chips
+* chocolate
+* biscuits
+* cookies
+
+Use merchant context carefully. Do not automatically classify every item sold by a supermarket as food if the item itself clearly identifies clothing, electronics, medicine or another category.
+
+## Accommodation rules
+
+### Hotels and lodging
+
+Assign:
+
+* Category: `Accommodation`
+* Icon: `hotel`
+
+Keywords:
+
+* hotel
+* resort
+* hostel
+* motel
+* guesthouse
+* guest house
+* lodge
+* lodging
+* room
+* suite
+* overnight stay
+* accommodation
+* Airbnb
+* Booking.com
+* Marriott
+* Hilton
+* Hyatt
+* Accor
+* Ibis
+* Premier Inn
+* Holiday Inn
+* Four Seasons
+* Ritz-Carlton
+* Jumeirah
+
+### Apartments and homes
+
+Assign:
+
+* Category: `Accommodation`
+* Icon: `home`
+
+Keywords:
+
+* apartment rental
+* holiday apartment
+* vacation rental
+* villa rental
+* chalet
+* serviced apartment
+* home stay
+* homestay
+
+Do not classify normal rent or utility bills as travel accommodation unless the description or group context clearly indicates lodging.
+
+## Transport rules
+
+### Flights
+
+Assign:
+
+* Category: `Transport`
+* Icon: `flight`
+
+Keywords:
+
+* flight
+* airfare
+* airline
+* airways
+* airport
+* boarding pass
+* plane ticket
+* baggage
+* luggage fee
+* Emirates
+* Etihad
+* Flydubai
+* Air Arabia
+* Qatar Airways
+* British Airways
+* Lufthansa
+* Air France
+* Ryanair
+* EasyJet
+* Wizz Air
+
+### Taxis and ride-hailing
+
+Assign:
+
+* Category: `Transport`
+* Icon: `taxi`
+
+Keywords:
+
+* taxi
+* cab
+* Uber
+* Careem
+* Bolt
+* Lyft
+* Free Now
+* black cab
+* ride
+* ride-hailing
+* transfer
+* airport transfer
+* limousine
+
+High-priority exception:
+
+* `Uber Eats` → `Food & Beverages`, icon `food`
+* Do not classify `Uber Eats` as Transport.
+
+### Car use and rental
+
+Assign:
+
+* Category: `Transport`
+* Icon: `car`
+
+Keywords:
+
+* car rental
+* rent a car
+* vehicle rental
+* Hertz
+* Avis
+* Europcar
+* Sixt
+* Enterprise
+* Thrifty
+* Budget Rent a Car
+
+### Fuel
+
+Assign:
+
+* Category: `Transport`
+* Icon: `fuel`
+
+Keywords:
+
+* fuel
+* petrol
+* gasoline
+* diesel
+* gas station
+* service station
+* ADNOC
+* ENOC
+* EPPCO
+* Shell
+* BP
+* TotalEnergies
+
+Use merchant context for terms such as `Shell`. Do not match the word when it is clearly unrelated to fuel.
+
+### Parking
+
+Assign:
+
+* Category: `Transport`
+* Icon: `parking`
+
+Keywords:
+
+* parking
+* car park
+* valet
+* meter parking
+* parking garage
+* RTA parking
+* Parkin
+
+### Train and rail
+
+Assign:
+
+* Category: `Transport`
+* Icon: `train`
+
+Keywords:
+
+* train
+* rail
+* railway
+* Eurostar
+* SNCF
+* Trenitalia
+* Deutsche Bahn
+* DB Bahn
+* National Rail
+
+### Bus
+
+Assign:
+
+* Category: `Transport`
+* Icon: `bus`
+
+Keywords:
+
+* bus
+* coach
+* shuttle bus
+* FlixBus
+
+### Metro and tram
+
+Assign:
+
+* Category: `Transport`
+* Icon: `metro`
+
+Keywords:
+
+* metro
+* subway
+* underground
+* tram
+* tube
+* RER
+* Navigo
+* Oyster
+* Nol card
+* public transport
+
+### Boat and ferry
+
+Assign:
+
+* Category: `Transport`
+* Icon: `boat`
+
+Keywords:
+
+* ferry
+* boat transfer
+* water taxi
+* cruise transfer
+* vaporetto
+
+### Bicycle and scooter
+
+Assign:
+
+* Category: `Transport`
+* Icon: `bike`
+
+Keywords:
+
+* bicycle
+* bike rental
+* cycle hire
+* scooter rental
+* e-scooter
+* Lime scooter
+
+### Tolls
+
+Assign:
+
+* Category: `Transport`
+* Icon: `car`
+
+Keywords:
+
+* toll
+* road toll
+* Salik
+* congestion charge
+* motorway fee
+* highway fee
+
+## Activities & Entertainment rules
+
+### General tickets
+
+Assign:
+
+* Category: `Activities & Entertainment`
+* Icon: `ticket`
+
+Keywords:
+
+* admission
+* entry ticket
+* attraction ticket
+* event ticket
+* entrance fee
+* theme park
+* amusement park
+* Disneyland
+* Universal Studios
+
+Do not use this rule for airline or train tickets when transport words are present.
+
+### Cinema and shows
+
+Assign:
+
+* Category: `Activities & Entertainment`
+* Icon: `cinema`
+
+Keywords:
+
+* cinema
+* movie
+* film
+* theatre
+* theater
+* opera
+* comedy show
+* performance
+* IMAX
+* Reel Cinemas
+* VOX Cinemas
+
+### Museums and landmarks
+
+Assign:
+
+* Category: `Activities & Entertainment`
+* Icon: `museum`
+
+Keywords:
+
+* museum
+* gallery
+* exhibition
+* monument
+* palace
+* castle
+* historical site
+* Louvre
+* Eiffel Tower
+* catacombs
+
+### Music
+
+Assign:
+
+* Category: `Activities & Entertainment`
+* Icon: `music`
+
+Keywords:
+
+* concert
+* live music
+* music festival
+* gig
+* DJ event
+
+### Sports and fitness
+
+Assign:
+
+* Category: `Activities & Entertainment`
+* Icon: `sports`
+
+Keywords:
+
+* sports
+* gym
+* padel
+* tennis
+* football
+* match ticket
+* stadium
+* ski pass
+* fitness class
+* yoga class
+* equipment rental for activity
+
+### Nightlife
+
+Assign:
+
+* Category: `Activities & Entertainment`
+* Icon: `nightlife`
+
+Keywords:
+
+* nightclub
+* club entry
+* nightlife
+* party
+* bar entry
+* lounge entry
+
+Drinks purchased at a bar remain `Food & Beverages`. An entry charge remains `Activities & Entertainment`.
+
+### Tours
+
+Assign:
+
+* Category: `Activities & Entertainment`
+* Icon: `tour`
+
+Keywords:
+
+* tour
+* guided tour
+* excursion
+* sightseeing
+* boat tour
+* walking tour
+* day trip
+* travel experience
+
+High-priority exception:
+
+* A `boat tour` is an activity.
+* A `ferry` used for transportation is Transport.
+
+## Shopping rules
+
+### General shopping
+
+Assign:
+
+* Category: `Shopping`
+* Icon: `shopping`
+
+Keywords:
+
+* shopping
+* retail
+* department store
+* mall
+* souvenir
+* duty free
+* Galeries Lafayette
+* Harrods
+
+### Clothing
+
+Assign:
+
+* Category: `Shopping`
+* Icon: `clothing`
+
+Keywords:
+
+* clothing
+* clothes
+* shirt
+* t-shirt
+* trousers
+* jeans
+* jacket
+* dress
+* shoes
+* trainers
+* sneakers
+* bag
+* backpack
+* Zara
+* H&M
+* Uniqlo
+* Nike
+* Adidas
+
+### Electronics
+
+Assign:
+
+* Category: `Shopping`
+* Icon: `electronics`
+
+Keywords:
+
+* electronics
+* phone
+* iPhone
+* laptop
+* computer
+* tablet
+* charger
+* cable
+* headphones
+* camera
+* Apple Store
+* Samsung
+* Sharaf DG
+* Emax
+
+Context exception:
+
+* `phone bill`, `mobile plan` or `SIM plan` → `Bills & Utilities`
+* A purchased phone or charger → `Shopping`
+
+### Gifts
+
+Assign:
+
+* Category: `Shopping`
+* Icon: `gift`
+
+Keywords:
+
+* gift
+* present
+* flowers
+* greeting card
+* souvenir gift
+
+## Health & Personal Care rules
+
+### Pharmacy and medicine
+
+Assign:
+
+* Category: `Health & Personal Care`
+* Icon: `pharmacy`
+
+Keywords:
+
+* pharmacy
+* chemist
+* medicine
+* medication
+* tablets
+* capsules
+* prescription
+* painkiller
+* vitamins
+* supplements
+* sunscreen
+* Boots Pharmacy
+* Life Pharmacy
+
+### Medical services
+
+Assign:
+
+* Category: `Health & Personal Care`
+* Icon: `medical`
+
+Keywords:
+
+* doctor
+* clinic
+* hospital
+* dentist
+* dental
+* medical
+* consultation
+* treatment
+* physiotherapy
+* laboratory
+* blood test
+* scan
+* MRI
+
+### Personal care and toiletries
+
+Assign:
+
+* Category: `Health & Personal Care`
+* Icon: `personal-care`
+
+Keywords:
+
+* toiletries
+* toothpaste
+* toothbrush
+* deodorant
+* shampoo
+* conditioner
+* soap
+* skincare
+* cosmetics
+* makeup
+* perfume
+* hygiene
+
+### Salon and grooming
+
+Assign:
+
+* Category: `Health & Personal Care`
+* Icon: `salon`
+
+Keywords:
+
+* salon
+* barber
+* haircut
+* hairdresser
+* manicure
+* pedicure
+* grooming
+
+### Spa
+
+Assign:
+
+* Category: `Health & Personal Care`
+* Icon: `spa`
+
+Keywords:
+
+* spa
+* massage
+* facial
+* wellness treatment
+
+### Laundry
+
+Assign:
+
+* Category: `Health & Personal Care`
+* Icon: `laundry`
+
+Keywords:
+
+* laundry
+* dry cleaning
+* laundromat
+* clothes washing
+* ironing service
+
+## Bills & Utilities rules
+
+### Electricity
+
+Assign:
+
+* Category: `Bills & Utilities`
+* Icon: `electricity`
+
+Keywords:
+
+* electricity
+* electric bill
+* power bill
+* DEWA
+* utility electricity
+
+### Internet
+
+Assign:
+
+* Category: `Bills & Utilities`
+* Icon: `internet`
+
+Keywords:
+
+* internet
+* broadband
+* Wi-Fi bill
+* home internet
+* router service
+* du internet
+* Etisalat internet
+
+### Phone and mobile service
+
+Assign:
+
+* Category: `Bills & Utilities`
+* Icon: `phone`
+
+Keywords:
+
+* phone bill
+* mobile bill
+* mobile plan
+* SIM plan
+* data plan
+* roaming package
+* eSIM plan
+* telecom bill
+
+A phone, charger or accessory purchase remains Shopping.
+
+### Gas utility
+
+Assign:
+
+* Category: `Bills & Utilities`
+* Icon: `gas`
+
+Keywords:
+
+* gas bill
+* cooking gas
+* natural gas
+* gas utility
+
+Fuel for a vehicle remains Transport.
+
+### Water utility
+
+Assign:
+
+* Category: `Bills & Utilities`
+* Icon: `water-utility`
+
+Only apply this rule when the context clearly indicates a utility or service bill:
+
+* water bill
+* water utility
+* municipal water
+* water service
+* utility bill
+* sewerage
+* water connection
+
+High-priority distinction:
+
+* `Water`, `mineral water` or `bottled water` → `Food & Beverages`, icon `water`
+* `Water bill` → `Bills & Utilities`, icon `water-utility`
+
+## Fees & Taxes rules
+
+### Taxes
+
+Assign:
+
+* Category: `Fees & Taxes`
+* Icon: `tax`
+
+Keywords:
+
+* tax
+* VAT
+* GST
+* sales tax
+* city tax
+* tourism tax
+* tourist tax
+* municipal tax
+* airport tax
+
+### General fees
+
+Assign:
+
+* Category: `Fees & Taxes`
+* Icon: `fee`
+
+Keywords:
+
+* fee
+* service fee
+* service charge
+* booking fee
+* reservation fee
+* processing fee
+* convenience fee
+* administration fee
+* platform fee
+
+### Delivery fees
+
+Assign:
+
+* Category: `Fees & Taxes`
+* Icon: `delivery-fee`
+
+Keywords:
+
+* delivery fee
+* delivery charge
+* shipping fee
+* courier fee
+
+A food-delivery order itself remains Food & Beverages. Only the separate delivery-fee line should use Fees & Taxes.
+
+### Tips
+
+Assign:
+
+* Category: `Fees & Taxes`
+* Icon: `tip`
+
+Keywords:
+
+* tip
+* gratuity
+
+### Bank and transaction fees
+
+Assign:
+
+* Category: `Fees & Taxes`
+* Icon: `bank-fee`
+
+Keywords:
+
+* bank fee
+* transaction fee
+* foreign transaction fee
+* exchange fee
+* currency conversion fee
+* card fee
+* ATM fee
+* withdrawal fee
+
+## Other rules
+
+Assign:
+
+* Category: `Other`
+* Icon: `other`
+
+Use only when none of the stronger rules produces a reasonable result.
+
+Do not use `Other` simply because:
+
+* The item contains one word.
+* The amount is small.
+* The merchant is unknown.
+* The description contains a brand name.
+* There is no exact match but a clear contextual match exists.
+
+## Context and conflict resolution
+
+Create explicit priority rules for ambiguous words and phrases.
+
+### Water
+
+* `water`, `bottled water`, `mineral water` → Food & Beverages / water
+* `water bill`, `water utility` → Bills & Utilities / water-utility
+
+### Gas
+
+* `petrol`, `diesel`, `gas station`, `vehicle fuel` → Transport / fuel
+* `gas bill`, `natural gas utility` → Bills & Utilities / gas
+
+### Ticket
+
+* `flight ticket`, airline name or airport context → Transport / flight
+* `train ticket`, railway context → Transport / train
+* `bus ticket` → Transport / bus
+* `museum ticket`, `cinema ticket`, `event ticket` → Activities & Entertainment / relevant activity icon
+* A generic `ticket` with no transport context → Activities & Entertainment / ticket
+
+### Uber
+
+* `Uber`, `Uber trip`, `Uber ride` → Transport / taxi
+* `Uber Eats` → Food & Beverages / food
+
+### Delivery
+
+* A complete food-delivery expense → Food & Beverages / food
+* A separate `delivery fee` item → Fees & Taxes / delivery-fee
+* A courier or parcel-delivery service → Fees & Taxes / delivery-fee
+
+### Hotel
+
+* `hotel room`, `hotel stay` → Accommodation / hotel
+* `hotel restaurant`, `room-service meal`, `breakfast` → Food & Beverages / food
+* `hotel city tax` → Fees & Taxes / tax
+
+### Phone
+
+* A purchased phone or phone accessory → Shopping / electronics
+* Phone bill, data package or mobile plan → Bills & Utilities / phone
+
+### Bar
+
+* Drinks purchased at a bar → Food & Beverages / alcohol
+* Club or event entry fee → Activities & Entertainment / nightlife
+
+### Apple
+
+* Apple Store, iPhone, MacBook or electronics context → Shopping / electronics
+* Apple fruit or grocery context → Food & Beverages / groceries
+
+Use the most specific meaningful phrase before matching a generic individual word.
+
+## Expense-level classification
+
+For a normal expense record, classify using:
+
+1. Expense title
+2. Merchant
+3. Description
+4. Existing notes
+5. Existing category
+6. Itemized lines, if available
+
+If the expense contains itemized lines from multiple categories:
+
+* Keep every item’s own category and icon.
+* Determine the parent expense category using the category with the highest combined itemized value.
+* If no category clearly dominates, preserve the user-selected parent category.
+* Do not change split amounts or totals.
+
+Example:
+
+```text
+Parent expense: Carrefour — AED 320
+
+Water — AED 8
+Food & Beverages / water
+
+Groceries — AED 210
+Food & Beverages / groceries
+
+Shampoo — AED 42
+Health & Personal Care / personal-care
+
+Phone charger — AED 60
+Shopping / electronics
+```
+
+The parent expense can be Food & Beverages because that category has the highest combined value, while each item keeps its own specific classification.
+
+## Itemization behaviour
+
+Apply the same classification engine to every individual itemized entry, regardless of how the item was created.
+
+Each itemized record should support:
+
+```ts
+{
+  id: string;
+  originalName: string;
+  normalizedName: string;
+  quantity?: number;
+  unitPrice?: number;
+  total: number;
+  category: ExpenseCategory;
+  iconKey: ExpenseIconKey;
+  confidence: number;
+  matchedRule?: string;
+  classificationSource: "automatic" | "user";
+}
+```
+
+Display the specific item icon next to the item name.
+
+Examples:
+
+* Water → water icon
+* Cappuccino → coffee icon
+* Burger → food icon
+* Petrol → fuel icon
+* Parking → parking icon
+* Museum ticket → museum icon
+* Shampoo → personal-care icon
+* VAT → tax icon
+
+The item icon must not change the mathematical treatment of the item.
+
+## User corrections and custom rules
+
+Allow the user to manually change:
+
+* Category
+* Icon
+
+When the user changes a category or icon, ask whether the choice should apply:
+
+* Only to this expense or item
+* To future matches with the same normalized name
+
+Store reusable user rules separately from the default rules.
+
+Example:
+
+```ts
+{
+  normalizedTerm: "my special shop",
+  category: "Shopping",
+  iconKey: "gift",
+  matchType: "exact",
+  createdByUser: true
+}
+```
+
+User-created rules must take priority over automatic rules.
+
+Never overwrite a manual selection during later automatic reclassification unless the user explicitly requests it.
+
+## Search integration
+
+Use the same normalized item text for the Itemization search.
+
+If the user searches for `water`:
+
+* Match water, mineral water, bottled water and relevant aliases.
+* Display every matching itemized entry.
+* Show the combined total of matching item values.
+* Do not add the full value of each parent expense.
+* Count each matching item exactly once.
+* Display the water icon beside applicable results.
+
+The search should also match:
+
+* Specific item names
+* Merchant names
+* Category names
+* Icon keywords
+* Known aliases
+* User-created classification terms
+
+Examples:
+
+* Searching `coffee` finds cappuccino, latte and espresso.
+* Searching `taxi` finds Uber, Careem and cab expenses.
+* Searching `flight` finds airline and airfare expenses.
+* Searching `Food & Beverages` finds all items assigned to that category.
+
+Search matching must not change the stored category or icon.
+
+## Visual consistency
+
+Use category colour and specific icon as separate visual signals:
+
+* Category determines colour.
+* `iconKey` determines icon shape.
+
+All Food & Beverages items should share the Food & Beverages category colour, while water, coffee and food may use different icons.
+
+Keep icon sizes and containers consistent across:
+
+* Expenses tab
+* Itemization list
+* Search results
+* Expense details
+* Add expense form
+* Edit expense form
+
+Use category-level icons in high-level charts and filters:
+
+* Food & Beverages → Utensils
+* Accommodation → Hotel
+* Transport → CarFront
+* Activities & Entertainment → Ticket
+* Shopping → ShoppingBag
+* Health & Personal Care → HeartPulse
+* Bills & Utilities → Zap
+* Fees & Taxes → ReceiptText
+* Other → Shapes
+
+Use specific icons only for individual expense and item rows.
+
+Do not place a separate legend for every specific icon on charts.
+
+## Performance and maintainability
+
+* Keep the keyword maps in a separate configuration module.
+* Keep the classification logic in a reusable service or utility.
+* Do not duplicate keyword lists between Expenses and Itemization.
+* Normalize each searchable record once and reuse the result.
+* Cache classification results where appropriate.
+* Debounce live search.
+* Apply matching on the server when searching a large dataset.
+* Include a version number for the default rules so future migrations can be managed.
+* Preserve existing manually selected categories during migrations.
+
+Suggested structure:
+
+```text
+expenseClassification/
+  categories.ts
+  iconRegistry.ts
+  keywordRules.ts
+  normalizeText.ts
+  classifyExpense.ts
+  classifyItem.ts
+  userRules.ts
+  searchAliases.ts
+```
+
+Adapt this structure to the existing project rather than creating unnecessary duplicate modules.
+
+## Migration
+
+Migrate existing data safely:
+
+* Merge old Food, Drinks, Groceries and Water categories into `Food & Beverages`.
+* Keep all original amounts, currencies, dates, payers, participants and split calculations unchanged.
+* Map old category icons to the new icon registry.
+* Preserve existing manual classifications where possible.
+* Use `Other` only for records with no reliable match.
+* Make the migration safe to run more than once.
+* Do not duplicate records.
+
+## Acceptance tests
+
+Verify at least the following:
+
+```text
+Water 500ml
+→ Food & Beverages / water
+
+Mineral Water x2
+→ Food & Beverages / water
+
+Water bill
+→ Bills & Utilities / water-utility
+
+Cappuccino
+→ Food & Beverages / coffee
+
+Coca Cola
+→ Food & Beverages / soft-drink
+
+Bottle of wine
+→ Food & Beverages / alcohol
+
+Carrefour groceries
+→ Food & Beverages / groceries
+
+Hotel room
+→ Accommodation / hotel
+
+Hotel breakfast
+→ Food & Beverages / food
+
+Hotel city tax
+→ Fees & Taxes / tax
+
+Emirates flight
+→ Transport / flight
+
+Uber trip
+→ Transport / taxi
+
+Uber Eats
+→ Food & Beverages / food
+
+Parking fee
+→ Transport / parking
+
+Petrol
+→ Transport / fuel
+
+Gas utility bill
+→ Bills & Utilities / gas
+
+Eurostar ticket
+→ Transport / train
+
+Museum ticket
+→ Activities & Entertainment / museum
+
+Cinema ticket
+→ Activities & Entertainment / cinema
+
+Boat tour
+→ Activities & Entertainment / tour
+
+Ferry transfer
+→ Transport / boat
+
+iPhone charger
+→ Shopping / electronics
+
+Phone bill
+→ Bills & Utilities / phone
+
+Prescription medicine
+→ Health & Personal Care / pharmacy
+
+Haircut
+→ Health & Personal Care / salon
+
+Electricity bill
+→ Bills & Utilities / electricity
+
+Delivery fee
+→ Fees & Taxes / delivery-fee
+
+VAT 5%
+→ Fees & Taxes / tax
+
+Unknown item
+→ Other / other
+```
+
+Also verify:
+
+1. User rules override default rules.
+2. Phrase matches override generic word matches.
+3. Manual classifications are preserved.
+4. Expense and itemization views use the same classification engine.
+5. Searching an item term totals only the matching itemized lines.
+6. Different currencies are not combined unless the app already supports currency conversion.
+7. Reclassification never changes an expense amount or split.
+8. Missing icons use the category-level icon rather than breaking the interface.
+
+Update the existing Expenses and Itemization components. Do not create a separate demonstration page and do not introduce receipt-scanning or OCR logic.

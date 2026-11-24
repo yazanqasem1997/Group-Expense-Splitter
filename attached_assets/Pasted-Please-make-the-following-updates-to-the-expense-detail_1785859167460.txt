@@ -1,0 +1,75 @@
+Please make the following updates to the expense details, activity, and notifications experience:
+
+1. Remove Emoji Reactions
+   - Remove all emoji reactions from the expense view.
+   - Keep the comments functionality intact.
+   - No reaction buttons, counts, or reaction-related UI should be displayed anywhere on an expense.
+
+2. Fix Comment Section Layout
+   - The comment section at the bottom of the expense appears to be slightly cropped or cut off.
+   - Fix the layout so the entire comment area is fully visible and accessible.
+   - Ensure proper spacing, padding, and scrolling behavior.
+
+3. Keep Comments Only at the Bottom
+   - The comment section should only be visible when the user reaches the bottom of the expense details page.
+   - Do not make the comment box sticky.
+   - Do not display the comment area while scrolling through the expense.
+   - Users should scroll down naturally and only then see the comment section and the ability to add a comment.
+
+4. Improve Change History Dates
+   - In the Change History section, dates currently display only the day and month (e.g., "2 Aug").
+   - Update the format to include the year as well (e.g., "2 Aug 2026").
+   - Apply this consistently to all change history entries.
+   - for change history allow the user to scroll side ways like a spinning wheel/carousel so it doesnt stack vertically
+
+5. Use Profile Pictures Instead of Generic Icons
+   - Wherever a user/person icon is displayed within an expense, check whether the user has a profile picture.
+   - If a profile picture exists, display it instead of the generic icon.
+   - Fall back to the default icon only when no profile picture is available.
+
+6. Update Sorting Icon in Activity Tab
+   - In the Activity tab, replace the current sorting icon with the standard up/down sort indicator, in the activity and groups.
+   - Use the typical dual-arrow sort icon that users commonly associate with sorting.
+
+7. Refine Icon Styling
+   - Reduce the visual intensity and colorfulness of the icons throughout the interface.
+   - Keep the existing icon shapes and overall design language.
+   - Remove the solid color fills from the icons.
+   - Use outlined/stroke-based icons instead.
+   - Apply border/stroke colors that align with the current application color palette.
+   - The final look should feel cleaner, more professional, and less visually distracting while maintaining consistency with the existing design system.
+
+8. Improve Activity Notifications Navigation
+   - When a user taps or clicks on a notification within the Activity tab, the entire activity card/container should be clickable, not just a small action area within the card.
+   - Currently, selecting an activity item takes the user to the group containing the expense.
+   - Update this behavior so that the user is taken directly to the specific expense associated with that activity, within the group.
+   - The navigation should deep-link to the exact expense record so the user does not need to manually search for it after entering the group.
+   - This should apply to all expense-related notifications, including:
+     - Expense creation
+     - Expense updates
+     - Status changes
+     - Comments
+     - Approvals/rejections
+     - Any other expense activity events
+   - Ensure the transition is smooth and that the expense detail page opens immediately with the relevant expense in focus.
+   - The entire activity card should have a clear clickable/tappable state so users understand that pressing anywhere on the card will open the related expense.
+
+9. Automatically Mark Notifications as Read
+   - When a user opens a notification from the Activity tab, the notification should automatically be marked as read.
+   - Once opened, it should be removed from the unread notifications list without requiring the user to manually dismiss or delete it.
+   - The notification should still remain in the activity/history log if applicable, but it should no longer appear as a pending unread notification.
+   - Update any notification counters, badges, or indicators immediately after the notification is opened.
+   - in archive they can delete all notifications, archived by default should be a collapsed section
+
+10. Swipe left to Delete notifications one by one
+ 
+
+11. "Read All" Should Clear All Notifications
+   - so when it is pressed they should all be shown as read, at the moment the colour changes when i press read which is great, once notification center is opened again, the user should only see them in the archived since they were read and new notifications will live there
+
+12. General UX Expectations
+   - Maintain consistency with the current design system and color palette.
+   - Ensure all interactions are intuitive and follow native mobile app patterns where possible.
+   - Verify that all changes work correctly on both iOS and Android devices, as well as web if supported.
+   - Pay special attention to responsiveness, spacing, accessibility, and touch targets.
+   - Ensure all updated screens feel polished, modern, and production-ready.

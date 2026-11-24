@@ -1,0 +1,103 @@
+Polish the Activity screen only. Do not change the tab bar, 
+navigation structure, or any other screen.
+
+KEEP: flat borderless rows with faint separators (no cards, 
+no borders around rows). Keep the existing palette 
+(#1763A6 primary, #129B82 teal, #EE7B30 orange).
+
+1. SURFACE
+- Make the scrollable list background pure white.
+- Keep the blue-grey tint ONLY behind the header block 
+  (title + search bar + filter chips).
+
+2. TEXT CONTRAST
+- Row title: near-black #0F172A, unchanged weight.
+- Secondary line (payer · group): #475569.
+- Date: #64748B.
+- Separators: 1px #E8EAEF, inset to align with the row 
+  title's left edge, not full-bleed.
+
+3. ROW ICONS
+- Change the category icon tiles from rounded/squircle to 
+  square edges (border radius 0, or max 4px if fully sharp 
+  looks harsh). Keep the existing tile size and pastel fills.
+- Apply the same square treatment to the settled/payment 
+  row tile so all rows match.
+
+4. REMOVE AVATARS
+- Delete the coloured initials circles from the secondary 
+  line entirely — they are being clipped and add no 
+  information.
+- Keep the text exactly as is: "Sofia Marconi · Barcelona 
+  Trip · 2 Aug", starting flush with the row title above it.
+- Reclaim the freed horizontal width for the title and 
+  amount columns.
+
+5. AMOUNTS
+- Remove the small "you paid" / "your share" labels entirely.
+- Encode direction with a sign instead of colour alone: 
+  "+$5.00" when owed, "−$11.00" when owing.
+- Positive amounts: darkened teal #0E7A66. Negative: 
+  #B91C1C. Settled rows stay neutral #475569.
+- Apply tabular numerals so decimals align vertically 
+  (fontVariant: ['tabular-nums']).
+
+6. DENSITY & GROUPING
+- Reduce row vertical padding so ~9-10 rows fit per screen 
+  instead of 7.
+- When sorted by date (the default), group rows under sticky 
+  headers: "Today", "Yesterday", "This week", then month 
+  names, and remove the per-row date.
+- When sorted by any other key, drop the sticky headers and 
+  show the per-row date again.
+
+7. SORTING
+- Add a sort control to the right of the filter chips row: a 
+  small icon button (arrow-up-arrow-down) that opens a 
+  bottom sheet.
+- Options: Date (newest first), Date (oldest first), Amount 
+  (highest first), Amount (lowest first), Group (A-Z).
+- Default is Date (newest first). Show a checkmark against 
+  the active option.
+- When a non-default sort is active, tint the sort icon with 
+  the primary blue #1763A6 so the state is visible without 
+  opening the sheet.
+- Sort must apply within whichever filter chip is active 
+  (All / Expenses / Settled) and persist while the user is 
+  on the tab.
+- Amount sorting compares absolute value, and must sort on a 
+  common base currency, not the raw number — €22 outranks 
+  $21.26.
+
+8. HEADER
+- Collapse the large "Activity" title into a compact nav-bar 
+  title on scroll.
+- Add one summary line under the title: net position across 
+  all groups, e.g. "You're owed $312 overall" — owed in 
+  teal, owing in red.
+
+9. BOTTOM INSET
+- Add bottom contentInset equal to the floating tab bar 
+  height + 12px so the last row never sits behind it.
+- Add a short white-to-transparent gradient fade above the 
+  tab bar.
+
+10. LONG AMOUNTS (currency overflow)
+- The amount block currently overflows on large values 
+  (e.g. €38,552.00). Fix as follows:
+  - Give the amount a fixed max width (~38% of row width); 
+    the title/subtitle column flexes and truncates with 
+    ellipsis instead.
+  - Amount is always one line: numberOfLines={1}, 
+    adjustsFontSizeToFit, minimumFontScale 0.75 — never 
+    wraps.
+  - If the formatted string still exceeds ~11 characters, 
+    switch to compact notation via 
+    Intl.NumberFormat(locale, {notation:'compact', 
+    maximumFractionDigits:1}) → "€38.6K". Show the exact 
+    value on the expense detail screen.
+  - Never abbreviate below 10,000 — normal amounts must stay 
+    exact.
+- Centralise this in a single formatAmount() utility in the 
+  existing money utils file so every screen formats 
+  identically.

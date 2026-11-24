@@ -1,0 +1,3267 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: SplitEasy production backend API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: users
+    description: Current user and bootstrap
+  - name: groups
+    description: Group, membership and invitation operations
+  - name: expenses
+    description: Expense, split and comment operations
+  - name: receipts
+    description: Receipt OCR, line items and claims
+  - name: settlements
+    description: Settlement operations
+  - name: recurring
+    description: Recurring expense schedule operations
+  - name: messages
+    description: Group message operations
+  - name: notifications
+    description: Notification and device token operations
+  - name: imports
+    description: Bulk import / bootstrap operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [users]
+      summary: Get the authenticated user profile (provisioning it if needed)
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      operationId: updateCurrentUser
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: deleteCurrentUser
+      tags: [users]
+      summary: Schedule the authenticated account for deletion
+      description: Deactivates the account immediately, allows recovery by signing in for 30 days, and permanently deletes it afterward.
+      responses:
+        "202":
+          description: Account deletion scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDeletionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /contacts/match:
+    post:
+      operationId: matchContacts
+      tags: [users]
+      summary: Match user-provided contact email addresses to active accounts
+      description: Email addresses are used for this request only and are not retained.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactMatchInput"
+      responses:
+        "200":
+          description: Matching active accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContactMatch"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /me/profile-photo/upload-url:
+    post:
+      operationId: requestProfilePhotoUploadUrl
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfilePhotoUploadInput"
+      responses:
+        "200":
+          description: Short-lived upload URL and stable photo URI
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfilePhotoUploadTarget"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /me/profile-photo/complete:
+    post:
+      operationId: completeProfilePhotoUpload
+      tags: [users]
+      responses:
+        "200":
+          description: Saved profile photo URI
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfilePhotoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /profile-photos/{userId}:
+    get:
+      operationId: getProfilePhoto
+      tags: [users]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public profile image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Photo not found
+
+  /friend-requests:
+    get:
+      operationId: listFriendRequests
+      tags: [users]
+      responses:
+        "200":
+          description: Requests involving the authenticated user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FriendRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: sendFriendRequest
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendRequestInput"
+      responses:
+        "201":
+          description: Friend request sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequest"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: A request is already pending or users are already friends
+  /friend-invite:
+    get:
+      operationId: getFriendInvitePage
+      tags: [users]
+      security: []
+      description: Public HTML page opened from a friend QR code; guides people to install the app and open the invite.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite page
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Invalid or expired invite page
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: Inviter account unavailable
+          content:
+            text/html:
+              schema:
+                type: string
+  /friend-qr:
+    post:
+      operationId: createFriendQr
+      tags: [users]
+      responses:
+        "201":
+          description: Short-lived, opaque friend QR token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendQrToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /friend-qr/preview:
+    post:
+      operationId: previewFriendQr
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendQrTokenInput"
+      responses:
+        "200":
+          description: Public profile associated with a valid friend QR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendQrProfile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /friend-requests/qr:
+    post:
+      operationId: sendFriendRequestWithQr
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendQrTokenInput"
+      responses:
+        "201":
+          description: Friend request sent to the QR owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequest"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: A request is already pending or users are already friends
+  /friend-requests/{id}/accept:
+    post:
+      operationId: acceptFriendRequest
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /friend-requests/{id}/decline:
+    post:
+      operationId: declineFriendRequest
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Request declined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/trip-pass/redeem:
+    post:
+      operationId: redeemTripPass
+      tags: [users]
+      summary: Use a free Trip Pass on a group
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanUsage"
+        "400":
+          description: No free Trip Pass available
+  /me/invite-reward:
+    post:
+      operationId: claimInviteReward
+      tags: [users]
+      summary: Pick what one invite reward becomes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteRewardChoice"
+      responses:
+        "200":
+          description: Updated usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanUsage"
+        "400":
+          description: No reward to claim
+  /me/usage:
+    get:
+      operationId: getScanUsage
+      tags: [users]
+      summary: Receipt scans used this month and the plan that applies
+      parameters:
+        - name: groupId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Scan usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanUsage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /client-errors:
+    post:
+      operationId: reportClientError
+      tags: [users]
+      summary: Record a crash or error from the app
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientErrorInput"
+      responses:
+        "204":
+          description: Recorded
+  /me/bootstrap:
+    get:
+      operationId: bootstrap
+      tags: [users]
+      summary: Fetch the full application snapshot for the authenticated user
+      responses:
+        "200":
+          description: Full snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bootstrap"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /imports:
+    post:
+      operationId: importSnapshot
+      tags: [imports]
+      summary: Bulk import a client snapshot (idempotent via Idempotency-Key)
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportInput"
+      responses:
+        "201":
+          description: Import job result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups:
+    get:
+      operationId: listGroups
+      tags: [groups]
+      responses:
+        "200":
+          description: Groups the user belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupInput"
+      responses:
+        "201":
+          description: Created group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups/{groupId}:
+    get:
+      operationId: getGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupUpdate"
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteGroup
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/members:
+    get:
+      operationId: listGroupMembers
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupMember"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: addGroupMember
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMemberInput"
+      responses:
+        "201":
+          description: Added member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMember"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/members/{memberKey}:
+    patch:
+      operationId: updateGroupMember
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isAdmin]
+              properties:
+                isAdmin:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMember"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: removeGroupMember
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberKey"
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /groups/{groupId}/invitations:
+    get:
+      operationId: listGroupInvitations
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createGroupInvitation
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupInvitationInput"
+      responses:
+        "201":
+          description: Created invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupInvitation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/join-link:
+    post:
+      operationId: createGroupJoinLink
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "201":
+          description: Created group join link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupJoinLink"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/join-link/refresh:
+    post:
+      operationId: refreshGroupJoinLink
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Rotated group join link; previous link is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupJoinLink"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /group-join/{token}:
+    get:
+      operationId: previewGroupJoin
+      tags: [groups]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public group information for a join preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupJoinPreview"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /group-join/{token}/accept:
+    post:
+      operationId: acceptGroupJoin
+      tags: [groups]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group membership created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupJoinPreview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      responses:
+        "200":
+          description: Accepted invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /invitations/app:
+    post:
+      operationId: sendAppInvitation
+      tags: [groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppInvitationInput"
+      responses:
+        "204":
+          description: Invitation email sent
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: Email provider rejected the invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /invitations/{token}/decline:
+    post:
+      operationId: declineInvitation
+      tags: [groups]
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      responses:
+        "200":
+          description: Declined invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/expenses:
+    get:
+      operationId: listExpenses
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Expense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseInput"
+      responses:
+        "201":
+          description: Created expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /expenses/{expenseId}:
+    get:
+      operationId: getExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      responses:
+        "200":
+          description: Expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseUpdate"
+      responses:
+        "200":
+          description: Updated expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteExpense
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /expenses/{expenseId}/comments:
+    post:
+      operationId: addExpenseComment
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/ExpenseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseCommentInput"
+      responses:
+        "201":
+          description: Added comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseComment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/receipts/upload-url:
+    post:
+      operationId: createReceiptUploadUrl
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptUploadUrlInput"
+      responses:
+        "200":
+          description: Signed receipt image upload target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptUploadUrl"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/receipts:
+    post:
+      operationId: createReceipt
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptInput"
+      responses:
+        "201":
+          description: OCR receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/BadRequest"
+
+  /receipts/{receiptId}:
+    get:
+      operationId: getReceipt
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+      responses:
+        "200":
+          description: Receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateReceipt
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptUpdate"
+      responses:
+        "200":
+          description: Updated receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /receipts/{receiptId}/image:
+    get:
+      operationId: getReceiptImage
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+      responses:
+        "200":
+          description: Private receipt image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /receipts/{receiptId}/items/{itemId}:
+    patch:
+      operationId: updateReceiptItem
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+        - $ref: "#/components/parameters/ReceiptItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptItemUpdate"
+      responses:
+        "200":
+          description: Updated receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      operationId: deleteReceiptItem
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+        - $ref: "#/components/parameters/ReceiptItemId"
+      responses:
+        "200":
+          description: Updated receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /receipts/{receiptId}/items:
+    post:
+      operationId: addReceiptItem
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptItemInput"
+      responses:
+        "201":
+          description: Updated receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /receipts/{receiptId}/claims/toggle:
+    post:
+      operationId: toggleReceiptClaim
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptClaimToggleInput"
+      responses:
+        "200":
+          description: Updated receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /receipts/{receiptId}/link-expense:
+    post:
+      operationId: linkReceiptExpense
+      tags: [receipts]
+      parameters:
+        - $ref: "#/components/parameters/ReceiptId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkReceiptExpenseInput"
+      responses:
+        "200":
+          description: Linked receipt session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Receipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/settlements:
+    get:
+      operationId: listSettlements
+      tags: [settlements]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Settlements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Settlement"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createSettlement
+      tags: [settlements]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettlementInput"
+      responses:
+        "201":
+          description: Created settlement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settlement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /settlements/{settlementId}:
+    delete:
+      operationId: deleteSettlement
+      tags: [settlements]
+      parameters:
+        - $ref: "#/components/parameters/SettlementId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /recurring:
+    get:
+      operationId: listAllRecurring
+      tags: [recurring]
+      summary: List all recurring schedules across the user's groups
+      responses:
+        "200":
+          description: Recurring schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringExpense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /recurring/run:
+    post:
+      operationId: runRecurring
+      tags: [recurring]
+      summary: Materialize all due recurring schedules for the user (idempotent)
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringRunResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups/{groupId}/recurring:
+    get:
+      operationId: listGroupRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Recurring schedules for the group
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringExpense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecurringInput"
+      responses:
+        "201":
+          description: Created recurring schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringExpense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /recurring/{recurringId}:
+    patch:
+      operationId: updateRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/RecurringId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecurringUpdate"
+      responses:
+        "200":
+          description: Updated recurring schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringExpense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteRecurring
+      tags: [recurring]
+      parameters:
+        - $ref: "#/components/parameters/RecurringId"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/messages:
+    get:
+      operationId: listGroupMessages
+      tags: [messages]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupMessage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createGroupMessage
+      tags: [messages]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMessageInput"
+      responses:
+        "201":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMessage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/messages/reads:
+    get:
+      operationId: listGroupMessageReads
+      tags: [messages]
+      summary: Read cursor (last-read timestamp) per group member, for computing WhatsApp-style read receipts.
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Read cursors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupMessageReadReceipt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: markGroupMessagesRead
+      tags: [messages]
+      summary: Mark all messages in the group as read up to now, for the caller's membership.
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Updated read cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMessageReadReceipt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups/{groupId}/reminders:
+    post:
+      operationId: sendGroupReminder
+      tags: [notifications]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendGroupReminderInput"
+      responses:
+        "201":
+          description: Reminder notification created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      responses:
+        "200":
+          description: Count marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutationCount"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/{notificationId}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      parameters:
+        - $ref: "#/components/parameters/NotificationId"
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /device-tokens:
+    post:
+      operationId: registerDeviceToken
+      tags: [notifications]
+      summary: Register (upsert) a push device token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenInput"
+      responses:
+        "201":
+          description: Registered device token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceToken"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /device-tokens/{token}:
+    delete:
+      operationId: deleteDeviceToken
+      tags: [notifications]
+      parameters:
+        - $ref: "#/components/parameters/DeviceTokenParam"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-supplied key that makes a write request replay-safe.
+      schema:
+        type: string
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+    MemberKey:
+      name: memberKey
+      in: path
+      required: true
+      schema:
+        type: string
+    ExpenseId:
+      name: expenseId
+      in: path
+      required: true
+      schema:
+        type: string
+    SettlementId:
+      name: settlementId
+      in: path
+      required: true
+      schema:
+        type: string
+    RecurringId:
+      name: recurringId
+      in: path
+      required: true
+      schema:
+        type: string
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+    InviteToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    DeviceTokenParam:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    ReceiptId:
+      name: receiptId
+      in: path
+      required: true
+      schema:
+        type: string
+    ReceiptItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MutationCount:
+      type: object
+      properties:
+        count:
+          type: integer
+      required:
+        - count
+
+    User:
+      type: object
+      required:
+        - id
+        - clerkUserId
+        - name
+        - avatarColor
+        - defaultCurrency
+        - createdAt
+      properties:
+        id:
+          type: string
+        clerkUserId:
+          type: string
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+        defaultCurrency:
+          type: string
+        notifPrefs:
+          type: ["object", "null"]
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        phone:
+          type: string
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+        defaultCurrency:
+          type: string
+        notifPrefs:
+          type: object
+          additionalProperties: true
+
+    AccountDeletionResponse:
+      type: object
+      required:
+        - status
+        - recoveryUntil
+        - confirmationEmailSent
+      properties:
+        status:
+          type: string
+          enum: [scheduled]
+        recoveryUntil:
+          type: string
+          format: date-time
+        confirmationEmailSent:
+          type: boolean
+
+    SplitDetail:
+      type: object
+      required:
+        - memberKey
+        - amount
+      properties:
+        memberKey:
+          type: string
+        amount:
+          type: number
+        percentage:
+          type: ["number", "null"]
+        paid:
+          type: ["number", "null"]
+
+    CustomItemization:
+      type: object
+      required:
+        - id
+        - searchTerm
+        - category
+      properties:
+        id:
+          type: string
+        searchTerm:
+          type: string
+          minLength: 1
+        category:
+          type: string
+
+    Group:
+      type: object
+      required:
+        - id
+        - name
+        - emoji
+        - currency
+        - type
+        - createdByUserId
+        - isArchived
+        - isEnded
+         - customItemizations
+        - createdAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        simplifyDebtsEnabled:
+          type: boolean
+        createdByUserId:
+          type: string
+        isArchived:
+          type: boolean
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
+        isEnded:
+          type: boolean
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        reminderDays:
+          type: ["integer", "null"]
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        tripStartReminderDays:
+          type: ["integer", "null"]
+        settleUpReminderDays:
+          type: ["integer", "null"]
+        reminderChannel:
+          type: ["string", "null"]
+        nudgeCampaign:
+          type: ["object", "null"]
+          additionalProperties: true
+        customItemizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomItemization"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GroupInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        simplifyDebtsEnabled:
+          type: boolean
+        startDate:
+          type: string
+        endDate:
+          type: string
+        reminderDays:
+          type: integer
+        tripStartReminderDays:
+          type: integer
+        settleUpReminderDays:
+          type: integer
+        reminderChannel:
+          type: string
+        nudgeCampaign:
+          type: object
+          additionalProperties: true
+        customItemizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomItemization"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMemberInput"
+
+    GroupUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        simplifyDebtsEnabled:
+          type: boolean
+        isArchived:
+          type: boolean
+        isEnded:
+          type: boolean
+        reminderDays:
+          type: integer
+        startDate:
+          type: string
+        endDate:
+          type: string
+        tripStartReminderDays:
+          type: integer
+        settleUpReminderDays:
+          type: integer
+        reminderChannel:
+          type: string
+        nudgeCampaign:
+          type: object
+          additionalProperties: true
+        customItemizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomItemization"
+
+    GroupMember:
+      type: object
+      required:
+        - id
+        - groupId
+        - memberKey
+        - name
+        - avatarColor
+        - isAdmin
+        - isPending
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        userId:
+          type: ["string", "null"]
+        memberKey:
+          type: string
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+        isAdmin:
+          type: boolean
+        isPending:
+          type: boolean
+        joinedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    GroupMemberInput:
+      type: object
+      required:
+        - name
+      properties:
+        memberKey:
+          type: string
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        phone:
+          type: string
+        avatarColor:
+          type: string
+        photo:
+          type: string
+        isAdmin:
+          type: boolean
+        isPending:
+          type: boolean
+
+    GroupInvitation:
+      type: object
+      required:
+        - id
+        - groupId
+        - inviterUserId
+        - invitedEmail
+        - status
+        - token
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        inviterUserId:
+          type: string
+        invitedEmail:
+          type: string
+        invitedName:
+          type: ["string", "null"]
+        invitedMemberKey:
+          type: ["string", "null"]
+        status:
+          type: string
+        token:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GroupInvitationInput:
+      type: object
+      required:
+        - invitedEmail
+      properties:
+        invitedEmail:
+          type: string
+          minLength: 1
+        invitedName:
+          type: string
+        invitedMemberKey:
+          type: string
+
+    GroupJoinLink:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    GroupJoinPreview:
+      type: object
+      required: [groupId, groupName, groupEmoji]
+      properties:
+        groupId:
+          type: string
+        groupName:
+          type: string
+        groupEmoji:
+          type: string
+
+    AppInvitationInput:
+      type: object
+      required:
+        - invitedEmail
+        - invitedName
+      properties:
+        invitedEmail:
+          type: string
+          minLength: 1
+        invitedName:
+          type: string
+          minLength: 1
+
+    ContactMatchInput:
+      type: object
+      required:
+        - emails
+      properties:
+        emails:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+
+    ContactMatch:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - avatarColor
+        - photo
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+
+    FriendRequestInput:
+      type: object
+      description: Send to a user id, or to an email address that belongs to a Split Mate account (404 not_registered otherwise).
+      properties:
+        recipientUserId:
+          type: string
+          minLength: 36
+          maxLength: 36
+        email:
+          type: string
+          maxLength: 254
+
+    FriendQrToken:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    FriendQrTokenInput:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 512
+
+    FriendQrProfile:
+      type: object
+      required: [name, avatarColor, photo]
+      properties:
+        name:
+          type: string
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+
+    FriendRequestUser:
+      type: object
+      required: [id, name, email, avatarColor, photo]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        avatarColor:
+          type: string
+        photo:
+          type: ["string", "null"]
+
+    FriendRequest:
+      type: object
+      required: [id, direction, status, createdAt, otherUser]
+      properties:
+        id:
+          type: string
+        direction:
+          type: string
+          enum: [sent, received]
+        status:
+          type: string
+          enum: [pending, accepted, declined]
+        createdAt:
+          type: string
+          format: date-time
+        otherUser:
+          $ref: "#/components/schemas/FriendRequestUser"
+
+    ProfilePhotoUploadInput:
+      type: object
+      required: [contentType]
+      properties:
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+
+    ProfilePhotoUploadTarget:
+      type: object
+      required: [uploadURL, photoUri]
+      properties:
+        uploadURL:
+          type: string
+        photoUri:
+          type: string
+
+    ProfilePhotoResponse:
+      type: object
+      required: [photo]
+      properties:
+        photo:
+          type: string
+
+    Expense:
+      type: object
+      required:
+        - id
+        - groupId
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splitType
+        - category
+        - splits
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        description:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        category:
+          type: string
+        notes:
+          type: ["string", "null"]
+        addedByUserId:
+          type: ["string", "null"]
+        recurringId:
+          type: ["string", "null"]
+        receiptId:
+          type: ["string", "null"]
+        reactions:
+          type: ["object", "null"]
+          additionalProperties: true
+        paymentDate:
+          type: ["string", "null"]
+          format: date
+        fxRate:
+          type: ["number", "null"]
+          description: Units of fxRateCurrency per 1 unit of currency, locked on the day of the payment.
+        fxRateCurrency:
+          type: ["string", "null"]
+        categoryBreakdown:
+          type: ["object", "null"]
+          additionalProperties:
+            type: number
+          description: Amount per itemisation category for receipts with mixed lines.
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseComment"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ExpenseInput:
+      type: object
+      required:
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splits
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        category:
+          type: string
+        notes:
+          type: string
+        reactions:
+          type: object
+          additionalProperties: true
+        paymentDate:
+          type: string
+          format: date
+        receiptId:
+          type: string
+        categoryBreakdown:
+          type: ["object", "null"]
+          additionalProperties:
+            type: number
+          description: Amount per itemisation category for receipts with mixed lines.
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+
+    ExpenseUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        category:
+          type: string
+        notes:
+          type: string
+        reactions:
+          type: object
+          additionalProperties: true
+        paymentDate:
+          type: ["string", "null"]
+          format: date
+        receiptId:
+          type: ["string", "null"]
+        categoryBreakdown:
+          type: ["object", "null"]
+          additionalProperties:
+            type: number
+          description: Amount per itemisation category for receipts with mixed lines.
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+
+    ExpenseComment:
+      type: object
+      required:
+        - id
+        - expenseId
+        - memberKey
+        - text
+        - createdAt
+      properties:
+        id:
+          type: string
+        expenseId:
+          type: string
+        memberKey:
+          type: string
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ExpenseCommentInput:
+      type: object
+      required:
+        - memberKey
+        - text
+      properties:
+        memberKey:
+          type: string
+        text:
+          type: string
+          minLength: 1
+
+    ReceiptUploadUrlInput:
+      type: object
+      required:
+        - contentType
+      properties:
+        contentType:
+          type: string
+          minLength: 1
+
+    ReceiptUploadUrl:
+      type: object
+      required:
+        - uploadURL
+        - objectPath
+        - contentType
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+        objectPath:
+          type: string
+        contentType:
+          type: string
+
+    ReceiptInput:
+      type: object
+      required:
+        - imageObjectPath
+        - contentType
+      properties:
+        imageObjectPath:
+          type: string
+          minLength: 1
+        contentType:
+          type: string
+          minLength: 1
+        rawOcrText:
+          type: string
+        rawOcrResponse:
+          type: ["object", "null"]
+          additionalProperties: true
+
+    ReceiptItem:
+      type: object
+      required:
+        - id
+        - name
+        - amount
+        - quantity
+        - unitPrice
+        - printedAmount
+        - calculatedAmount
+        - confidence
+        - sourceText
+        - sourceBbox
+        - checkStatus
+        - uncertain
+        - claimedByMemberKeys
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        amount:
+          type: ["number", "null"]
+        quantity:
+          type: ["number", "null"]
+        unitPrice:
+          type: ["number", "null"]
+        printedAmount:
+          type: ["number", "null"]
+        calculatedAmount:
+          type: ["number", "null"]
+        confidence:
+          type: ["number", "null"]
+        sourceText:
+          type: ["string", "null"]
+        sourceBbox:
+          $ref: "#/components/schemas/ReceiptBbox"
+          nullable: true
+        checkStatus:
+          type: string
+          enum: [balanced, mismatch, unavailable]
+        uncertain:
+          type: boolean
+        claimedByMemberKeys:
+          type: array
+          items:
+            type: string
+
+    ReceiptBbox:
+      type: object
+      required: [x0, y0, x1, y1]
+      properties:
+        x0:
+          type: number
+        y0:
+          type: number
+        x1:
+          type: number
+        y1:
+          type: number
+
+    ReceiptOcrWord:
+      type: object
+      required: [text, confidence, bbox]
+      properties:
+        text:
+          type: string
+        confidence:
+          type: number
+        bbox:
+          $ref: "#/components/schemas/ReceiptBbox"
+
+    Receipt:
+      type: object
+      required:
+        - id
+        - groupId
+        - merchant
+        - receiptDate
+        - total
+        - subtotal
+        - tax
+        - tip
+        - discount
+        - serviceCharge
+        - rounding
+        - currency
+        - rawOcrText
+        - rawOcrResponse
+        - ocrLanguage
+        - ocrConfidence
+        - ocrLayout
+        - reconciliationStatus
+        - reconciliationDifference
+        - reconciliationWarnings
+        - imageUrl
+        - linkedExpenseId
+        - status
+        - items
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        merchant:
+          type: ["string", "null"]
+        receiptDate:
+          type: ["string", "null"]
+        total:
+          type: ["number", "null"]
+        subtotal:
+          type: ["number", "null"]
+        tax:
+          type: ["number", "null"]
+        tip:
+          type: ["number", "null"]
+        discount:
+          type: ["number", "null"]
+        serviceCharge:
+          type: ["number", "null"]
+        rounding:
+          type: ["number", "null"]
+        currency:
+          type: ["string", "null"]
+        rawOcrText:
+          type: string
+        rawOcrResponse:
+          type: ["object", "null"]
+          additionalProperties: true
+        ocrLanguage:
+          type: string
+        ocrConfidence:
+          type: ["number", "null"]
+        ocrLayout:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceiptOcrWord"
+        reconciliationStatus:
+          type: string
+          enum: [balanced, mismatch, insufficient]
+        reconciliationDifference:
+          type: ["number", "null"]
+        reconciliationWarnings:
+          type: array
+          items:
+            type: string
+        imageUrl:
+          type: string
+        linkedExpenseId:
+          type: ["string", "null"]
+        status:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceiptItem"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReceiptItemInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        amount:
+          type: ["number", "null"]
+        quantity:
+          type: ["number", "null"]
+        unitPrice:
+          type: ["number", "null"]
+
+    ReceiptItemUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        amount:
+          type: ["number", "null"]
+          minimum: 0
+        quantity:
+          type: ["number", "null"]
+          minimum: 0
+        unitPrice:
+          type: ["number", "null"]
+          minimum: 0
+
+    ReceiptUpdate:
+      type: object
+      properties:
+        merchant:
+          type: ["string", "null"]
+        total:
+          type: ["number", "null"]
+        subtotal:
+          type: ["number", "null"]
+        tax:
+          type: ["number", "null"]
+        tip:
+          type: ["number", "null"]
+        currency:
+          type: ["string", "null"]
+        receiptDate:
+          type: ["string", "null"]
+        discount:
+          type: ["number", "null"]
+        serviceCharge:
+          type: ["number", "null"]
+        rounding:
+          type: ["number", "null"]
+
+    ReceiptClaimToggleInput:
+      type: object
+      required:
+        - itemId
+      properties:
+        itemId:
+          type: string
+          minLength: 1
+        memberKey:
+          type: string
+          minLength: 1
+
+    LinkReceiptExpenseInput:
+      type: object
+      required:
+        - expenseId
+      properties:
+        expenseId:
+          type: string
+          minLength: 1
+
+    InviteRewardChoice:
+      type: object
+      required: [choice]
+      properties:
+        choice:
+          type: string
+          enum: [plus, trip_pass]
+    ScanUsage:
+      type: object
+      required: [plan, used, limit, resetsOn, tripPassCredits, rewardsToClaim]
+      properties:
+        plan:
+          type: string
+          enum: [free, plus, trip]
+        used:
+          type: integer
+        limit:
+          type: ["integer", "null"]
+        resetsOn:
+          type: string
+        tripPassCredits:
+          type: integer
+        rewardsToClaim:
+          type: integer
+
+    ClientErrorInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        stack:
+          type: string
+        context:
+          type: object
+          additionalProperties: true
+
+    Settlement:
+      type: object
+      required:
+        - id
+        - groupId
+        - fromMemberKey
+        - toMemberKey
+        - amount
+        - currency
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        fromMemberKey:
+          type: string
+        toMemberKey:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        note:
+          type: ["string", "null"]
+        recordedByUserId:
+          type: ["string", "null"]
+        fxRate:
+          type: ["number", "null"]
+          description: Units of fxRateCurrency per 1 unit of currency, locked on the day of the payment.
+        fxRateCurrency:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    SettlementInput:
+      type: object
+      required:
+        - fromMemberKey
+        - toMemberKey
+        - amount
+        - currency
+      properties:
+        fromMemberKey:
+          type: string
+        toMemberKey:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        note:
+          type: string
+        fxRate:
+          type: number
+          description: Exact rate for a payment that clears a debt in another currency.
+
+    RecurringExpense:
+      type: object
+      required:
+        - id
+        - groupId
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splitType
+        - splits
+        - category
+        - frequency
+        - endType
+        - occurrenceCount
+        - nextDueAt
+        - isActive
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        description:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        category:
+          type: string
+        frequency:
+          type: string
+        customDays:
+          type: ["integer", "null"]
+        intervalMonths:
+          type: ["integer", "null"]
+        intervalWeeks:
+          type: ["integer", "null"]
+        intervalDays:
+          type: ["integer", "null"]
+        dayOfWeek:
+          type: ["integer", "null"]
+        timeOfDay:
+          type: ["string", "null"]
+        timeZone:
+          type: ["string", "null"]
+        endType:
+          type: string
+        endCount:
+          type: ["integer", "null"]
+        endDate:
+          type: ["string", "null"]
+        occurrenceCount:
+          type: integer
+        nextDueAt:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+        lastRunAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RecurringInput:
+      type: object
+      required:
+        - description
+        - amount
+        - currency
+        - paidByMemberKey
+        - splits
+        - frequency
+        - nextDueAt
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        category:
+          type: string
+        frequency:
+          type: string
+        customDays:
+          type: integer
+        intervalMonths:
+          type: integer
+        intervalWeeks:
+          type: integer
+        intervalDays:
+          type: integer
+        dayOfWeek:
+          type: integer
+        timeOfDay:
+          type: string
+        timeZone:
+          type: string
+        endType:
+          type: string
+        endCount:
+          type: integer
+        endDate:
+          type: string
+        nextDueAt:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+
+    RecurringUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+        currency:
+          type: string
+        paidByMemberKey:
+          type: string
+        splitType:
+          type: string
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitDetail"
+        category:
+          type: string
+        frequency:
+          type: string
+        customDays:
+          type: integer
+        intervalMonths:
+          type: integer
+        intervalWeeks:
+          type: integer
+        intervalDays:
+          type: integer
+        dayOfWeek:
+          type: integer
+        timeOfDay:
+          type: string
+        timeZone:
+          type: string
+        endType:
+          type: string
+        endCount:
+          type: integer
+        endDate:
+          type: string
+        nextDueAt:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+
+    RecurringRunResult:
+      type: object
+      required:
+        - generatedExpenseIds
+        - firedCount
+      properties:
+        firedCount:
+          type: integer
+        generatedExpenseIds:
+          type: array
+          items:
+            type: string
+
+    GroupMessage:
+      type: object
+      required:
+        - id
+        - groupId
+        - memberKey
+        - text
+        - createdAt
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        memberKey:
+          type: string
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GroupMessageInput:
+      type: object
+      required:
+        - memberKey
+        - text
+      properties:
+        memberKey:
+          type: string
+        text:
+          type: string
+          minLength: 1
+
+    GroupMessageReadReceipt:
+      type: object
+      required:
+        - memberKey
+        - lastReadMessagesAt
+      properties:
+        memberKey:
+          type: string
+        lastReadMessagesAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Notification:
+      type: object
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - body
+        - read
+        - createdAt
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+        groupId:
+          type: ["string", "null"]
+        expenseId:
+          type: ["string", "null"]
+        settlementId:
+          type: ["string", "null"]
+        title:
+          type: string
+        body:
+          type: string
+        tone:
+          type: ["string", "null"]
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    SendGroupReminderInput:
+      type: object
+      required:
+        - recipientMemberKey
+        - amount
+        - currency
+      properties:
+        recipientMemberKey:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          minLength: 1
+
+    DeviceToken:
+      type: object
+      required:
+        - id
+        - userId
+        - token
+        - platform
+        - createdAt
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        token:
+          type: string
+        platform:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    DeviceTokenInput:
+      type: object
+      required:
+        - token
+        - platform
+      properties:
+        token:
+          type: string
+          minLength: 1
+        platform:
+          type: string
+          minLength: 1
+
+    ImportGroup:
+      type: object
+      required:
+        - name
+      properties:
+        clientId:
+          type: string
+        name:
+          type: string
+        emoji:
+          type: string
+        currency:
+          type: string
+        type:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        reminderDays:
+          type: integer
+        tripStartReminderDays:
+          type: integer
+        settleUpReminderDays:
+          type: integer
+        reminderChannel:
+          type: string
+        nudgeCampaign:
+          type: object
+          additionalProperties: true
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMemberInput"
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseInput"
+        settlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/SettlementInput"
+        recurring:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecurringInput"
+
+    ImportInput:
+      type: object
+      required:
+        - groups
+      properties:
+        source:
+          type: string
+        defaultCurrency:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportGroup"
+
+    ImportJob:
+      type: object
+      required:
+        - id
+        - userId
+        - source
+        - status
+        - groupsCreated
+        - expensesCreated
+        - createdAt
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        counts:
+          type: ["object", "null"]
+          additionalProperties: true
+        groupsCreated:
+          type: integer
+        expensesCreated:
+          type: integer
+        error:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    Bootstrap:
+      type: object
+      required:
+        - user
+        - groups
+        - members
+        - expenses
+        - settlements
+        - recurring
+        - invitations
+        - notifications
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMember"
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Expense"
+        settlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/Settlement"
+        recurring:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecurringExpense"
+        invitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupInvitation"
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"

@@ -1,0 +1,26 @@
+I want to add a receipt scanning feature to my Splitwise-style expense app, using a naive/free approach (no external LLM API, no extra billing).
+
+1. On the group detail screen, change the "+" button into a small expanding FAB with two icons: a receipt icon (existing "Add expense manually" flow — don't touch it) and a camera icon ("Scan receipt" — new). This should add zero extra taps compared to today for either path.
+
+2. "Scan receipt" opens the camera/upload picker. User takes or uploads a photo of a receipt.
+
+3. Run OCR on the image using Tesseract.js (client-side, free, no API key needed). Extract raw text from the image.
+
+4. Parse the raw OCR text with regex/heuristics to extract line items:
+   - Look for lines matching a pattern like [item name] ... [price] (e.g. text followed by a number with 2 decimals, optionally with a currency symbol).
+   - Try to detect "subtotal", "tax", "tip", and "total" lines separately using keyword matching.
+   - Don't worry about perfect accuracy — every parsed field should be editable by the user in the next step.
+
+5. Show one combined screen (not a multi-step wizard):
+   - Add Expense fields at the top (amount, description) pre-filled from the parsed total and merchant name if detected, editable.
+   - Below that, a checklist of parsed line items, each with an editable name/price (in case OCR misread something) and a way for each group member to tap/claim it. Support multiple people claiming one item.
+   - A running per-person total that updates live as items are claimed.
+   - If parsed items don't sum to the parsed total, show an inline warning rather than blocking — let the user adjust manually.
+
+6. Sync item claims in real time across group members viewing the same receipt session (use our existing real-time mechanism if we have one; otherwise polling is fine for now).
+
+7. On save, distribute tax/tip proportionally across each person's claimed subtotal, and pass the final per-person amounts into the existing expense-saving logic using the "Exact amounts" split (not equal split).
+
+8. Data model: store the original receipt image, raw OCR text, parsed items, and per-user claims linked to the resulting expense, so it can be viewed/edited later from the expense detail screen.
+
+Create this in the same visual style and component patterns we've already been using in the app. Don't add any external API keys or paid services — everything should run with free/client-side libraries. Don't change anything else in the app that I haven't asked you to change here.
