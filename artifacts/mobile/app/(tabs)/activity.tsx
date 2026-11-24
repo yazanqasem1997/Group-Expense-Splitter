@@ -229,7 +229,8 @@ export default function ActivityScreen() {
           n.type !== "expense_added" &&
           n.type !== "settlement_recorded" &&
           n.type !== "member_added" &&
-          n.type !== "simplify_debts_changed",
+          n.type !== "simplify_debts_changed" &&
+          n.type !== "comment_added",
       )
       .map(n => ({ type: "notification" as const, data: n })),
   ], [expenses, settlements, notifications]);
