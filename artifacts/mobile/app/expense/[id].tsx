@@ -209,10 +209,9 @@ export default function ExpenseDetailScreen() {
 
           {/* ── Info ─────────────────────────────────────────────────── */}
           <View style={[styles.infoCard, { backgroundColor: colors.surface }]}>
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Paid by</Text>
+            <View style={styles.infoPair}>
               <Pressable
-                style={styles.infoRight}
+                style={styles.infoCell}
                 onPress={() => {
                   if (expense.paidById) {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -220,52 +219,50 @@ export default function ExpenseDetailScreen() {
                   }
                 }}
               >
-                <View style={styles.payerAvatarStack}>
-                  {payers.slice(0, 3).map((member, index) => (
-                    <View key={member!.id} style={index > 0 ? styles.payerAvatarOverlap : undefined}>
-                      <Avatar
-                        name={member!.name}
-                        color={member!.avatarColor}
-                        size={24}
-                        imageUri={member!.photo}
-                      />
-                    </View>
-                  ))}
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Paid by</Text>
+                <View style={styles.infoCellValue}>
+                  <View style={styles.payerAvatarStack}>
+                    {payers.slice(0, 3).map((member, index) => (
+                      <View key={member!.id} style={index > 0 ? styles.payerAvatarOverlap : undefined}>
+                        <Avatar name={member!.name} color={member!.avatarColor} size={22} imageUri={member!.photo} />
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={[styles.infoValue, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>
+                    {payers.length > 1
+                      ? payers.map(member => member?.isCurrentUser ? "You" : member?.name).join(", ")
+                      : youPaid ? "You" : payer?.name}
+                  </Text>
                 </View>
-                <Text style={[styles.infoValue, { color: colors.text }]}>
-                  {payers.length > 1
-                    ? payers.map(member => member?.isCurrentUser ? "You" : member?.name).join(", ")
-                    : youPaid ? "You" : payer?.name}
-                </Text>
               </Pressable>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Date</Text>
-              <Text style={[styles.infoValue, { color: colors.text }]}>
-                {formatDate(expense.paymentDate ?? expense.createdAt)}
-              </Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Category</Text>
-              <Text style={[styles.infoValue, { color: colors.text }]}>
-                {expense.category.charAt(0).toUpperCase() + expense.category.slice(1)}
-              </Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Logged by</Text>
-              <View style={styles.infoRight}>
-                <Avatar
-                  name={loggedByMember?.name ?? currentUser.name}
-                  color={loggedByMember?.avatarColor ?? currentUser.avatarColor}
-                  size={24}
-                  imageUri={loggedByMember?.photo}
-                />
+              <View style={[styles.infoCell, { alignItems: "flex-end" }]}>
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Date</Text>
                 <Text style={[styles.infoValue, { color: colors.text }]}>
-                  {youLogged ? "You" : loggedByMember?.name ?? "Former member"}
+                  {formatDate(expense.paymentDate ?? expense.createdAt)}
                 </Text>
+              </View>
+            </View>
+            <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.infoPair}>
+              <View style={styles.infoCell}>
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Category</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>
+                  {expense.category.charAt(0).toUpperCase() + expense.category.slice(1)}
+                </Text>
+              </View>
+              <View style={[styles.infoCell, { alignItems: "flex-end" }]}>
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Logged by</Text>
+                <View style={styles.infoCellValue}>
+                  <Avatar
+                    name={loggedByMember?.name ?? currentUser.name}
+                    color={loggedByMember?.avatarColor ?? currentUser.avatarColor}
+                    size={22}
+                    imageUri={loggedByMember?.photo}
+                  />
+                  <Text style={[styles.infoValue, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>
+                    {youLogged ? "You" : loggedByMember?.name ?? "Former member"}
+                  </Text>
+                </View>
               </View>
             </View>
             {!!expense.receiptId && (
@@ -675,6 +672,9 @@ const styles = StyleSheet.create({
   payerAvatarStack: { flexDirection: "row", alignItems: "center" },
   payerAvatarOverlap: { marginLeft: -6 },
   infoValue: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  infoPair: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  infoCell: { flex: 1, gap: 3 },
+  infoCellValue: { flexDirection: "row", alignItems: "center", gap: 6 },
   infoDivider: { height: 1, marginHorizontal: 14 },
   recurringSourceBadge: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
 
