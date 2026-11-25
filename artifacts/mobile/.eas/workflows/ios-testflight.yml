@@ -10,9 +10,3 @@ jobs:
     params:
       platform: ios
       profile: production
-  submit:
-    name: Send to TestFlight
-    needs: [build]
-    type: submit
-    params:
-      build_id: ${{ needs.build.outputs.build_id }}
