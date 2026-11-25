@@ -53,10 +53,9 @@ function readFriendQrToken(token: unknown): { userId: string } | null {
   }
 }
 
-// Until Split Mate ships in the stores it runs inside Expo Go, so "get the app"
-// means installing Expo Go and then opening this project's invite deep link.
-const APP_STORE_URL = "https://apps.apple.com/app/id982107779";
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=host.exp.exponent";
+// Split Mate's own store pages; the deep link below opens the installed app.
+const APP_STORE_URL = "https://apps.apple.com/app/id6835761115";
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.yazanqasem.splitmate";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => ({
@@ -64,13 +63,9 @@ function escapeHtml(value: string): string {
   })[char] ?? char);
 }
 
-function appDeepLink(req: Request, token: string): string | null {
-  const isProduction = process.env.NODE_ENV === "production";
-  const forwardedHost = req.headers["x-forwarded-host"];
-  const requestHost = (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost) ?? req.headers.host;
-  const host = isProduction ? requestHost : process.env.REPLIT_EXPO_DEV_DOMAIN;
-  if (!host || !/^[a-z0-9.-]+(?::\d+)?$/i.test(host)) return null;
-  return `${isProduction ? "exps" : "exp"}://${host}/--/add-friend?code=${encodeURIComponent(token)}`;
+function appDeepLink(_req: Request, token: string): string | null {
+  // The app's URL scheme (app.json "scheme": "mobile").
+  return `mobile://add-friend?code=${encodeURIComponent(token)}`;
 }
 
 function renderFriendInvitePage(options: { inviterName: string | null; deepLink: string | null; error: string | null }): string {
