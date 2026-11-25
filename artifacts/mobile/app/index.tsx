@@ -80,6 +80,10 @@ function AppleIcon() {
 const GENERIC_ERROR = "Something went wrong. Please try again.";
 const OAUTH_TIMEOUT_MS = 30000;
 
+// Google and Apple need their own credentials in Clerk Production before they can work.
+// Flip this to true once both are set up there.
+const SOCIAL_SIGN_IN_ENABLED = false;
+
 function getOAuthRedirectUrl() {
   if (Platform.OS === "web") {
     return AuthSession.makeRedirectUri();
@@ -468,6 +472,8 @@ export default function LandingScreen() {
         </View>
       ) : null}
 
+      {SOCIAL_SIGN_IN_ENABLED ? (
+        <>
       <Pressable
         style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.appleBtn, pressed && styles.pressed]}
         onPress={handleApple}
@@ -500,6 +506,8 @@ export default function LandingScreen() {
           </>
         )}
       </Pressable>
+        </>
+      ) : null}
 
       <Pressable
         style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.emailBtn, pressed && styles.pressed]}
