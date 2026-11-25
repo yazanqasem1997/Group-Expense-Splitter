@@ -13,7 +13,8 @@
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "ios": {
-        "resourceClass": "default"
+        "resourceClass": "default",
+        "image": "latest"
       },
       "channel": "railway"
     }
