@@ -1610,7 +1610,7 @@ export default function GroupDetailScreen() {
         styles.tabBar,
         { backgroundColor: colors.surface, borderBottomColor: colors.border },
       ]}>
-        {(["expenses", "balances", "recurring", "charts", ...(tab === "chat" ? ["chat"] : [])] as Tab[]).map(t => {
+        {(["expenses", "recurring", "balances", "charts", ...(tab === "chat" ? ["chat"] : [])] as Tab[]).map(t => {
           const labels: Record<Tab, string> = { expenses: "Expenses", recurring: "Recurring", balances: "Balances", charts: "Insights", chat: "Chat" };
           const hasUnread = t === "chat" ? hasNewChat : t === "expenses" ? hasNewExpenses : false;
           return (
