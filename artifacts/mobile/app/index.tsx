@@ -82,7 +82,7 @@ const OAUTH_TIMEOUT_MS = 30000;
 
 // Google and Apple need their own credentials in Clerk Production before they can work.
 // Flip this to true once both are set up there.
-const SOCIAL_SIGN_IN_ENABLED = false;
+const SOCIAL_SIGN_IN_ENABLED = true;
 
 function getOAuthRedirectUrl() {
   if (Platform.OS === "web") {
