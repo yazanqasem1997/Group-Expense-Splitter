@@ -461,6 +461,13 @@ export default function LandingScreen() {
         </View>
       ) : null}
 
+      {formError ? (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-circle" size={16} color="#fff" />
+          <Text style={styles.errorBannerText}>{formError}</Text>
+        </View>
+      ) : null}
+
       <Pressable
         style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.appleBtn, pressed && styles.pressed]}
         onPress={handleApple}
@@ -742,12 +749,12 @@ export default function LandingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.hero, { paddingTop: insets.top + (tiny ? 10 : compact ? 18 : 40) }]}>
+          <View style={[styles.hero, { paddingTop: insets.top + (mode !== "landing" ? 6 : tiny ? 10 : compact ? 18 : 40) }]}>
             <Animated.View style={{ opacity: logoOpacity, transform: [{ translateY: logoLift }, { scale: logoScale }], zIndex: 2 }}>
-              <View style={[styles.logoContainer, compact && { marginBottom: 12 }]}>
-                <View style={[styles.logoBadge, compact && styles.logoBadgeCompact]}>
+              <View style={[styles.logoContainer, (compact || mode !== "landing") && { marginBottom: 6 }]}>
+                <View style={[styles.logoBadge, (compact || mode !== "landing") && styles.logoBadgeCompact]}>
                    <AnimatedBrandMark
-                     size={compact ? 64 : 84}
+                     size={mode !== "landing" ? 40 : compact ? 64 : 84}
                      primary={SPLIT_MARK_COLORS.primary}
                      secondary={SPLIT_MARK_COLORS.secondary}
                      detail={SPLIT_MARK_COLORS.seam}
@@ -758,7 +765,7 @@ export default function LandingScreen() {
             </Animated.View>
 
             <Animated.View style={[styles.titleWrap, { opacity: titleOpacity, transform: [{ translateY: titleY }] }]}>
-               <Text style={[styles.appName, compact && { fontSize: 36 }]}>{PRODUCT_NAME}</Text>
+               <Text style={[styles.appName, compact && { fontSize: 36 }, mode !== "landing" && { fontSize: 24 }]}>{PRODUCT_NAME}</Text>
             </Animated.View>
 
             {mode === "landing" && (
