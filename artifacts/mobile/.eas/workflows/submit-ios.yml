@@ -11,4 +11,4 @@ jobs:
       - name: Install packages with the pinned pnpm
         run: npm install -g pnpm@10.26.1 && pnpm install --frozen-lockfile
       - name: Submit to TestFlight
-        run: npx --yes eas-cli@16 submit --platform ios --id c716e0e5-5e6a-4739-b938-e4ec213a669c --profile production --non-interactive 2>&1 | tail -40
+        run: npx --yes eas-cli@16 submit --platform ios --id ec89f81e-602f-49ad-b5fb-1c3eaf44d710 --profile production --non-interactive 2>&1 | tail -40
