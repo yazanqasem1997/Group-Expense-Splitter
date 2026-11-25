@@ -1,0 +1,17 @@
+name: Submit iOS build to TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        type: string
+        required: true
+        description: Expo build id to send to TestFlight
+
+jobs:
+  submit:
+    name: Send to TestFlight
+    steps:
+      - uses: eas/checkout
+      - name: Submit to TestFlight
+        run: npx --yes eas-cli@latest submit --platform ios --id ${{ github.event.inputs.build_id }} --profile production --non-interactive
