@@ -9,7 +9,7 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_DOMAIN": "api.infosplitmate.com",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_aGVscGZ1bC1zYWxtb24tNjg4My5jbGVyay5hY2NvdW50cy5kZXYk",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuaW5mb3NwbGl0bWF0ZS5jb20k",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "ios": {
