@@ -1673,6 +1673,21 @@ export default function GroupDetailScreen() {
     );
   }
 
+  // First name, plus last-name initial when another member shares that first name.
+  function balanceDisplayName(member?: { id: string; name?: string } | null): string {
+    const full = (member?.name ?? "").trim();
+    if (!full) return "Someone";
+    const parts = full.split(/s+/);
+    const first = parts[0];
+    const clash = (group?.memberIds ?? []).some(mid => {
+      if (mid === member!.id) return false;
+      const other = getMemberById(mid);
+      return !other?.isCurrentUser && (other?.name ?? "").trim().split(/s+/)[0]?.toLowerCase() === first.toLowerCase();
+    });
+    if (!clash || parts.length < 2) return first;
+    return `${first} ${parts[parts.length - 1][0].toUpperCase()}.`;
+  }
+
   function renderBalances() {
     if (debts.length === 0) {
       return (
@@ -1728,85 +1743,69 @@ export default function GroupDetailScreen() {
               const to = getMemberById(debt.toId);
               const isMyDebt = debt.fromId === currentUser.id;
               const isMyCredit = debt.toId === currentUser.id;
-              const fromName = from?.isCurrentUser ? "You" : (from?.name?.split(" ")[0] ?? "Someone");
-              const toName = to?.isCurrentUser ? "You" : (to?.name?.split(" ")[0] ?? "Someone");
+              const involvesMe = isMyDebt || isMyCredit;
+              const fromName = from?.isCurrentUser ? "You" : balanceDisplayName(from);
+              const toName = to?.isCurrentUser ? "You" : balanceDisplayName(to);
               const amountColor = isMyCredit ? colors.positive : isMyDebt ? colors.negative : colors.text;
+              const roleText = isMyDebt ? "you pay" : isMyCredit ? "you get" : null;
 
               return (
                 <Pressable
                   key={`${debt.fromId}_${debt.toId}`}
                   style={[
-                    styles.balancePaymentRow,
+                    styles.balanceCard,
                     index > 0 && styles.balancePaymentRowSpaced,
-                    {
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                      shadowColor: colors.shadow,
-                    },
+                    { backgroundColor: colors.surface, borderColor: colors.border, shadowColor: colors.shadow },
                   ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setBalanceDetail({ fromId: debt.fromId, toId: debt.toId, amount: debt.amount });
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`${fromName} owes ${toName} ${formatAmount(debt.amount, group!.currency)}`}
+                  accessibilityLabel={`${fromName} pays ${toName} ${formatAmount(debt.amount, group!.currency)}`}
                 >
-                  <View style={[styles.memberNameBox, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
-                    <Avatar
-                      name={from?.name ?? ""}
-                      color={from?.avatarColor ?? colors.primaryLight}
-                      size={24}
-                      imageUri={from?.photo}
-                    />
-                    <Text style={[styles.balanceMemberBoxName, { color: colors.text }]} numberOfLines={1}>
-                      {fromName}
-                    </Text>
-                  </View>
-
-                  <Feather name="arrow-right" size={16} color={colors.textTertiary} />
-
-                  <View style={[styles.memberNameBox, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
-                    <Avatar
-                      name={to?.name ?? ""}
-                      color={to?.avatarColor ?? colors.primaryLight}
-                      size={24}
-                      imageUri={to?.photo}
-                    />
-                    <Text style={[styles.balanceMemberBoxName, { color: colors.text }]} numberOfLines={1}>
-                      {toName}
-                    </Text>
-                  </View>
-
-                  <View style={styles.balanceAmountColumn}>
-                    <Text
-                      style={[styles.balanceAmount, { color: amountColor }]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.72}
-                    >
+                  <View style={styles.balanceCardTop}>
+                    <View style={styles.balanceAvatarPair}>
+                      <View style={[styles.balanceAvatarRing, { borderColor: colors.surface }]}>
+                        <Avatar name={from?.name ?? ""} color={from?.avatarColor ?? colors.primaryLight} size={28} imageUri={from?.photo} />
+                      </View>
+                      <View style={[styles.balanceAvatarRing, styles.balanceAvatarOverlap, { borderColor: colors.surface }]}>
+                        <Avatar name={to?.name ?? ""} color={to?.avatarColor ?? colors.primaryLight} size={28} imageUri={to?.photo} />
+                      </View>
+                    </View>
+                    <View style={styles.balanceCardNames}>
+                      <Text style={[styles.balanceCardTitle, { color: colors.text }]} numberOfLines={1}>
+                        {fromName} → {toName}
+                      </Text>
+                      {roleText ? (
+                        <Text style={[styles.balanceCardRole, { color: colors.textSecondary }]}>{roleText}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={[styles.balanceCardAmount, { color: amountColor }]} numberOfLines={1}>
                       {formatAmount(debt.amount, group!.currency)}
                     </Text>
-                    <View style={styles.balanceActions}>
-                      {(isMyDebt || isMyCredit) && (
-                        <Pressable
-                          style={[styles.reminderBtn, { backgroundColor: colors.warningLight }]}
-                          onPress={() => openReminderModal(debt.fromId, debt.toId, debt.amount)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Send reminder"
-                        >
-                          <Feather name="bell" size={15} color={colors.warning} />
-                        </Pressable>
-                      )}
+                  </View>
+                  {involvesMe && (
+                    <View style={styles.balanceCardActions}>
                       <Pressable
-                        style={[styles.settleBtn, { backgroundColor: colors.primary }]}
+                        style={[styles.balanceRemindBtn, { backgroundColor: colors.warningLight }]}
+                        onPress={() => openReminderModal(debt.fromId, debt.toId, debt.amount)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Send reminder"
+                      >
+                        <Feather name="bell" size={14} color={colors.warning} />
+                        <Text style={[styles.balanceBtnText, { color: colors.warning }]}>Remind</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.balanceSettleBtn, { backgroundColor: colors.teal }]}
                         onPress={() => openSettleModal(debt.fromId, debt.toId, debt.amount)}
                         accessibilityRole="button"
-                        accessibilityLabel="Settle balance"
+                        accessibilityLabel={isMyCredit ? "Mark as paid" : "Settle balance"}
                       >
-                        <Text style={styles.settleBtnText}>Settle</Text>
+                        <Text style={[styles.balanceBtnText, { color: "#fff" }]}>{isMyCredit ? "Mark paid" : "Settle"}</Text>
                       </Pressable>
                     </View>
-                  </View>
+                  )}
                 </Pressable>
               );
             })}
@@ -3621,6 +3620,19 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   balanceRows: { marginTop: 14 },
+  balanceCard: { borderRadius: 16, borderWidth: 1, padding: 12, gap: 10, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
+  balanceCardTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  balanceAvatarPair: { flexDirection: "row", flexShrink: 0 },
+  balanceAvatarRing: { borderWidth: 2, borderRadius: 18 },
+  balanceAvatarOverlap: { marginLeft: -10 },
+  balanceCardNames: { flex: 1, minWidth: 0 },
+  balanceCardTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  balanceCardRole: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  balanceCardAmount: { flexShrink: 0, fontSize: 15, fontFamily: "Inter_700Bold", fontVariant: ["tabular-nums"], textAlign: "right" },
+  balanceCardActions: { flexDirection: "row", gap: 8 },
+  balanceRemindBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
+  balanceSettleBtn: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 9, borderRadius: 12 },
+  balanceBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   balancePaymentRow: {
     flexDirection: "row",
     alignItems: "center",
