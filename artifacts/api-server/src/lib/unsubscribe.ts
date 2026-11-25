@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, emailOptOutsTable } from "@workspace/db";
 
-const BASE = (process.env.PUBLIC_APP_URL || "https://group-expense-splitter.replit.app").replace(/\/$/, "");
+const BASE = (process.env.PUBLIC_APP_URL || "https://api.infosplitmate.com").replace(/\/$/, "");
 
 function token(email: string): string {
   return createHmac("sha256", process.env.SESSION_SECRET || "split-mate").update(email.trim().toLowerCase()).digest("hex").slice(0, 32);

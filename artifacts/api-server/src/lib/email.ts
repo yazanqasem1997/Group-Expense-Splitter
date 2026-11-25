@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import { logger } from "./logger";
 import { isOptedOut, unsubscribeUrl } from "./unsubscribe";
-const OPEN_URL = `${(process.env.PUBLIC_APP_URL || "https://group-expense-splitter.replit.app").replace(/\/$/, "")}/api/open`;
+const OPEN_URL = `${(process.env.PUBLIC_APP_URL || "https://api.infosplitmate.com").replace(/\/$/, "")}/api/open`;
 
 type GroupInvitationEmail = {
   to: string;
