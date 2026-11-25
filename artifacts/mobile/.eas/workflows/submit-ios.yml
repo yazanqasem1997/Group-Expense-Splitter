@@ -13,5 +13,7 @@ jobs:
     name: Send to TestFlight
     steps:
       - uses: eas/checkout
+      - name: Install packages with the pinned pnpm
+        run: npm install -g pnpm@10.26.1 && pnpm install --frozen-lockfile
       - name: Submit to TestFlight
-        run: npx --yes eas-cli@latest submit --platform ios --id ${{ github.event.inputs.build_id }} --profile production --non-interactive
+        run: cd artifacts/mobile && npx --yes eas-cli@latest submit --platform ios --id ${{ github.event.inputs.build_id }} --profile production --non-interactive
